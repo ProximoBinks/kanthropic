@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+
+# Reference material only — the proprietary Kickbacks extension we studied for
+# the settings-editing technique. Not part of kanthropic; never published.
+kickbacks.ai-main/

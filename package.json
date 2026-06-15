@@ -1,0 +1,27 @@
+{
+  "name": "kanthropic",
+  "version": "0.1.0",
+  "description": "Learn hiragana & katakana in the dead time while Claude Code is thinking. Ambient flashcards in the Claude Code CLI status line, plus a typed, FSRS-scored drill.",
+  "type": "module",
+  "bin": {
+    "kanthropic": "src/cli/index.mjs"
+  },
+  "scripts": {
+    "study": "node src/cli/index.mjs study",
+    "install-statusline": "node src/cli/index.mjs install",
+    "uninstall": "node src/cli/index.mjs uninstall",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --allowJs --checkJs -p jsconfig.json || true"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ts-fsrs": "^5.4.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.5"
+  },
+  "license": "MIT",
+  "author": "Elliot Koh"
+}
