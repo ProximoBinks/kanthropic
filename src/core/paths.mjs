@@ -22,6 +22,14 @@ export const PREV_STATUSLINE_PATH = join(KANTHROPIC_DIR, "prev-statusline.json")
  *  so the side-pane input box reacts to whether Claude is working. */
 export const SESSION_STATE_PATH = join(KANTHROPIC_DIR, "session-state.json");
 
+/** tmux pane IDs the `session` launcher records, so the hooks can switch focus
+ *  to the right pane regardless of the user's tmux base-index config. */
+export const KANA_PANE_PATH = join(KANTHROPIC_DIR, "kana-pane");
+export const CLAUDE_PANE_PATH = join(KANTHROPIC_DIR, "claude-pane");
+
+/** The tmux session name the launcher and hooks share. */
+export const TMUX_SESSION = "kanthropic";
+
 /** Claude Code's settings file — the surface we edit. */
 export const CLAUDE_SETTINGS_PATH = join(home, ".claude", "settings.json");
 

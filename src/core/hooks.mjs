@@ -1,15 +1,16 @@
 /**
  * Reversibly wire Claude Code lifecycle hooks into ~/.claude/settings.json so
- * the `kanthropic drill` input box (in a side/bottom terminal pane) reacts to
- * whether Claude is working.
+ * the kana drill reacts to Claude, AND — when you run inside the `kanthropic
+ * session` tmux layout — your keyboard focus auto-switches between the Claude
+ * pane and the kana pane.
  *
- *   UserPromptSubmit → write {"state":"thinking"}  (you submit → Claude starts)
- *   Stop             → write {"state":"idle"}      (Claude finished)
+ *   UserPromptSubmit → write {"state":"thinking"} + focus the KANA pane
+ *   Stop             → write {"state":"idle"}     + focus the CLAUDE pane
  *
- * Both hooks just write ~/.kanthropic/session-state.json and exit 0, so they
- * are instant and never affect Claude. The drill watches that file. Each
- * command carries the MARKER so uninstall removes exactly our entries, leaving
- * any hooks the user already had untouched.
+ * The focus switch only runs when $TMUX is set (you're inside tmux) and the
+ * recorded pane file exists, so the hooks are a harmless no-op for plain
+ * `claude` sessions. Each command is instant, exits 0, and never affects
+ * Claude. The MARKER tags our entries for clean removal.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import {
@@ -23,10 +24,14 @@ const MARKER = "kanthropic-panel";
 
 /** @param {"thinking"|"idle"} state @returns {string} */
 function stateCommand(state) {
-  // POSIX sh: write the state file and exit 0. MARKER tags it for removal.
+  // POSIX sh: write the state file, then (only inside tmux) switch focus to the
+  // recorded pane. Always exits 0 so it never delays or fails Claude.
+  const paneFile = state === "thinking" ? "kana-pane" : "claude-pane";
   return `sh -c 'mkdir -p "$HOME/.kanthropic"; `
-    + `printf "{\\"state\\":\\"${state}\\",\\"at\\":%s}" "$(date +%s)" `
-    + `> "$HOME/.kanthropic/session-state.json"; exit 0' # ${MARKER}`;
+    + `printf "{\\"state\\":\\"${state}\\",\\"at\\":%s}" "$(date +%s)" > "$HOME/.kanthropic/session-state.json"; `
+    + `if [ -n "$TMUX" ]; then P=$(cat "$HOME/.kanthropic/${paneFile}" 2>/dev/null); `
+    + `[ -n "$P" ] && tmux select-pane -t "$P" 2>/dev/null; fi; `
+    + `exit 0' # ${MARKER}`;
 }
 
 /** A single Claude hook entry. @param {"thinking"|"idle"} state */

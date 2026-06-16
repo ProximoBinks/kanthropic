@@ -19,6 +19,7 @@ import { install, uninstall, isInstalled } from "../install/install.mjs";
 import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
 import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
+import { runSession } from "./session.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -105,9 +106,10 @@ function help() {
   stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Claude Code thinks\n\n`
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
+    + `  ${bold("session")} [--script k] seamless tmux layout: Claude + kana, focus auto-switches\n`
     + `  ${bold("drill")} [--script k]   endless kana input box for a side pane (reacts to Claude)\n`
     + `  ${bold("study")} [--script k]   typed, scored session — run at the idle prompt\n`
-    + `  ${bold("hooks-install")}        wire Claude hooks so the drill reacts to Claude thinking\n`
+    + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
     + `  ${bold("config")} [--front ms]  set default script / flip timing\n`
@@ -143,12 +145,15 @@ async function main() {
     case "drill":
       await runDrill({ script: scriptFrom(flags, store.config.script) });
       break;
+    case "session":
+      runSession({ script: scriptFrom(flags, store.config.script) });
+      break;
     case "hooks-install": {
       const r = installHooks();
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
-      stdout.write(`${green("✓ hooks installed.")} The drill's ${bold("●")} indicator now lights up `
-        + `when Claude is thinking.\n`);
-      stdout.write(dim("  Open a second terminal pane and run `kanthropic drill`. Start a new `claude` session.\n"));
+      stdout.write(`${green("✓ hooks installed.")} Focus will auto-switch to kana while Claude thinks `
+        + `(inside ${bold("kanthropic session")}), and the drill's ${bold("●")} dot lights up.\n`);
+      stdout.write(dim("  Start it with: kanthropic session\n"));
       break;
     }
     case "hooks-uninstall": {
