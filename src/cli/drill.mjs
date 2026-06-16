@@ -130,7 +130,10 @@ export async function runDrill(opts) {
       seen++;
       if (ok) {
         correct++;
-        stdout.write(c.green("✓") + "\n");
+        // Put the ✓ on the SAME line, just after what you typed: Enter dropped
+        // the cursor a line; move up, forward past "→ <answer>", mark, restore.
+        const aw = [...answer].length;
+        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}\x1b[B\r`);
         await sleep(450);
       } else {
         stdout.write(`${c.red("✗")}  ${c.dim("answer:")} ${c.bold(entry.romaji)}  ${c.dim("(Enter)")}`);
