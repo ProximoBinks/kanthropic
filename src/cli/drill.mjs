@@ -15,6 +15,7 @@ import { pickNext } from "../core/ambient.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 import { bigGlyph } from "./bigGlyph.mjs";
+import { glyphImage, imagesEnabled } from "./glyphImage.mjs";
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -45,6 +46,7 @@ function center(lines, cols) {
 export async function runDrill(opts) {
   const script = opts.script;
   const reader = makeLineReader();
+  const useImage = imagesEnabled(load().config.image || "auto");
   let lastGlyph = null;
   let correct = 0, seen = 0;
   let lastState = readSessionState();
@@ -69,22 +71,33 @@ export async function runDrill(opts) {
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
 
       // Render the glyph at a sensible CAPPED size (so a full-screen window
-      // doesn't blow it up to a giant thin line), then CENTER it in whatever
-      // space is available. Both height- and width-aware.
+      // doesn't blow it up), then CENTER it in the available space. Prefer a
+      // real image (iTerm2 protocol); fall back to block-art.
       const availRows = Math.max(3, rows - 3); // header + prompt + result
       const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
-      const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
-      const artLines = art || [c.bold(next.glyph)];
-      const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
-      const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
-      const botPad = Math.max(0, availRows - artLines.length - topPad);
 
       stdout.write(CLEAR);
       stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
-      stdout.write("\n".repeat(topPad));
-      stdout.write(glyphBlock + "\n");
-      stdout.write("\n".repeat(botPad));
+
+      const img = useImage ? glyphImage(next.glyph, renderRows) : null;
+      if (img) {
+        const topPad = Math.max(0, Math.floor((availRows - renderRows) / 2));
+        const botPad = Math.max(0, availRows - renderRows - topPad);
+        const padCols = Math.max(0, Math.floor((cols - img.widthCells) / 2));
+        stdout.write("\n".repeat(topPad));
+        stdout.write(" ".repeat(padCols) + img.escape + "\n");
+        stdout.write("\n".repeat(botPad));
+      } else {
+        const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
+        const artLines = art || [c.bold(next.glyph)];
+        const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
+        const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
+        const botPad = Math.max(0, availRows - artLines.length - topPad);
+        stdout.write("\n".repeat(topPad));
+        stdout.write(glyphBlock + "\n");
+        stdout.write("\n".repeat(botPad));
+      }
 
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed

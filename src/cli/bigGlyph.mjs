@@ -53,7 +53,10 @@ function font() {
   return _font;
 }
 
-function flatten(cmds) {
+/** The loaded JP font (or null). Exposed so the image renderer reuses it. */
+export function getFont() { return font(); }
+
+export function flatten(cmds) {
   const subs = [];
   let cur = [];
   let last = { x: 0, y: 0 };

@@ -21,6 +21,7 @@ import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
 import { renderGlyph, STYLES } from "./bigGlyph.mjs";
+import { glyphImage, imagesEnabled } from "./glyphImage.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -85,9 +86,11 @@ function cmdConfig(flags) {
   if (flags.front && !isNaN(+flags.front)) store.config.frontMs = +flags.front;
   if (flags.back && !isNaN(+flags.back)) store.config.backMs = +flags.back;
   if (typeof flags.style === "string" && STYLES.includes(flags.style)) store.config.glyphStyle = flags.style;
+  if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) store.config.image = flags.image;
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
-    + `style=${store.config.glyphStyle} front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
+    + `image=${store.config.image} style=${store.config.glyphStyle} `
+    + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
 }
 
 function cmdGlyphTest(rest) {
@@ -106,6 +109,19 @@ function cmdGlyphTest(rest) {
   }
   stdout.write(`\n${dim("D · plain (your terminal font):")} ${ch}\n`);
   stdout.write(dim(`\nSet one with:  kanthropic config --style ${STYLES.join("|")}\n`));
+}
+
+function cmdImageTest(rest) {
+  const ch = rest.find((a) => !a.startsWith("--")) || "ば";
+  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} as a real image (iTerm2 protocol):\n\n`);
+  const img = glyphImage(ch, 10);
+  if (!img) { stdout.write(dim("(no Japanese font found to rasterize)\n")); return; }
+  stdout.write(img.escape + "\n\n");
+  stdout.write(`If you see a crisp ${bold(ch)} above, images work — turn them on with:\n`);
+  stdout.write(`  ${bold("kanthropic config --image on")}\n`);
+  stdout.write(dim(`\nIf you see garbled text instead, your terminal isn't showing inline images.\n`
+    + `  • VS Code / Antigravity: enable the setting "terminal.integrated.enableImages", reload.\n`
+    + `  • Then fall back any time with:  kanthropic config --image off  (uses block glyphs)\n`));
 }
 
 function cmdPreview(flags) {
@@ -133,7 +149,8 @@ function help() {
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
     + `  ${bold("config")} [--style q]   set script / glyph style (half|quad|braille) / timing\n`
-    + `  ${bold("glyphtest")} [glyph]    show a glyph in every style to pick the legible one\n`
+    + `  ${bold("glyphtest")} [glyph]    show a glyph in every block style\n`
+    + `  ${bold("imagetest")} [glyph]    test real-image rendering (iTerm2/Sixel terminals)\n`
     + `  ${bold("preview")}              print a few sample ambient lines\n\n`
     + dim("  options: --script hiragana|katakana  --count N  --front <ms>  --back <ms>\n\n"));
 }
@@ -186,6 +203,7 @@ async function main() {
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
     case "glyphtest": cmdGlyphTest(rest); break;
+    case "imagetest": cmdImageTest(rest); break;
     case "preview": cmdPreview(flags); break;
     case undefined:
     case "help":

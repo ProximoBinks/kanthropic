@@ -44,6 +44,8 @@ function applyTerminalConfig(target = TMUX_SESSION) {
   const cmds = [
     ["set-option", "-t", target, "default-terminal", "tmux-256color"],
     ["set-option", "-t", target, "-ga", "terminal-overrides", ",*256col*:Tc"],
+    // let inline-image escapes (iTerm2/Sixel) pass through to the outer terminal
+    ["set-option", "-t", target, "allow-passthrough", "on"],
   ];
   // Propagate a UTF-8 locale to programs started in the session.
   const lang = env.LC_ALL || env.LANG || "en_US.UTF-8";
