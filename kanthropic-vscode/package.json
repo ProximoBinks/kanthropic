@@ -7,7 +7,10 @@
   "engines": {
     "vscode": "^1.80.0"
   },
-  "categories": ["Education", "Other"],
+  "categories": [
+    "Education",
+    "Other"
+  ],
   "main": "./extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -32,7 +35,10 @@
       "properties": {
         "kanthropic.script": {
           "type": "string",
-          "enum": ["hiragana", "katakana"],
+          "enum": [
+            "hiragana",
+            "katakana"
+          ],
           "default": "hiragana",
           "description": "Which script the panel drills."
         },
@@ -43,5 +49,11 @@
         }
       }
     }
+  },
+  "dependencies": {
+    "ts-fsrs": "^5.4.1"
+  },
+  "scripts": {
+    "sync-lib": "mkdir -p lib/data lib/core && cp ../src/data/kana.mjs lib/data/ && cp ../src/core/store.mjs ../src/core/scheduler.mjs ../src/core/ambient.mjs ../src/core/paths.mjs lib/core/"
   }
 }

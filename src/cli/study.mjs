@@ -5,11 +5,11 @@
  *
  * @typedef {import("../data/kana.mjs").Script} Script
  */
-import { createInterface } from "node:readline";
 import { stdin, stdout } from "node:process";
 import { ENTRIES, glyph as glyphOf, checkAnswer, entryByGlyph } from "../data/kana.mjs";
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
+import { makeLineReader } from "./lineReader.mjs";
 
 const NEW_PER_SESSION = 10;
 const MAX_SESSION = 25;
@@ -21,36 +21,6 @@ const c = {
   red: (s) => `\x1b[31m${s}\x1b[0m`,
   accent: (s) => `\x1b[38;5;176m${s}\x1b[0m`,
 };
-
-/**
- * A line reader that buffers `line` events into a queue and survives stream
- * close — so it works identically for an interactive TTY and for piped input
- * (where the stream may close right after delivering every line). `next()`
- * resolves to the next line, or null once input is exhausted.
- */
-function makeLineReader() {
-  const rl = createInterface({ input: stdin, output: stdout, terminal: stdin.isTTY });
-  const queue = [];
-  const waiters = [];
-  let closed = false;
-  rl.on("line", (l) => {
-    const w = waiters.shift();
-    if (w) w(l); else queue.push(l);
-  });
-  rl.on("close", () => {
-    closed = true;
-    while (waiters.length) waiters.shift()(null);
-  });
-  return {
-    /** @returns {Promise<string|null>} */
-    next() {
-      if (queue.length) return Promise.resolve(queue.shift());
-      if (closed) return Promise.resolve(null);
-      return new Promise((res) => waiters.push(res));
-    },
-    close() { rl.close(); },
-  };
-}
 
 /** @template T @param {T[]} arr @returns {T[]} */
 function shuffle(arr) {

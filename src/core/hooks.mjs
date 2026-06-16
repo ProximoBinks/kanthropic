@@ -1,16 +1,15 @@
 /**
  * Reversibly wire Claude Code lifecycle hooks into ~/.claude/settings.json so
- * the VS Code panel auto-opens when you submit a prompt and auto-closes when
- * Claude finishes.
+ * the `kanthropic drill` input box (in a side/bottom terminal pane) reacts to
+ * whether Claude is working.
  *
- *   UserPromptSubmit → curl <panel>/start   (thinking begins → reveal panel)
- *   Stop             → curl <panel>/stop    (Claude done    → close panel)
+ *   UserPromptSubmit → write {"state":"thinking"}  (you submit → Claude starts)
+ *   Stop             → write {"state":"idle"}      (Claude finished)
  *
- * Both hook commands read the panel's port from ~/.kanthropic/panel-port (the
- * extension writes it on activate), so they degrade to a harmless no-op when
- * the extension isn't running. Each command carries the MARKER so we can find
- * and remove exactly our entries on uninstall, leaving any hooks the user
- * already had untouched.
+ * Both hooks just write ~/.kanthropic/session-state.json and exit 0, so they
+ * are instant and never affect Claude. The drill watches that file. Each
+ * command carries the MARKER so uninstall removes exactly our entries, leaving
+ * any hooks the user already had untouched.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import {
@@ -22,18 +21,17 @@ import {
 
 const MARKER = "kanthropic-panel";
 
-/** @param {"start"|"stop"} route @returns {string} */
-function curlCommand(route) {
-  // POSIX sh: read the port file, curl if present, always exit 0 so a missing
-  // panel never delays or fails Claude. MARKER tags it for clean removal.
-  return `sh -c 'P=$(cat "$HOME/.kanthropic/panel-port" 2>/dev/null); `
-    + `[ -n "$P" ] && curl -s "http://localhost:$P/${route}" >/dev/null 2>&1; exit 0' `
-    + `# ${MARKER}`;
+/** @param {"thinking"|"idle"} state @returns {string} */
+function stateCommand(state) {
+  // POSIX sh: write the state file and exit 0. MARKER tags it for removal.
+  return `sh -c 'mkdir -p "$HOME/.kanthropic"; `
+    + `printf "{\\"state\\":\\"${state}\\",\\"at\\":%s}" "$(date +%s)" `
+    + `> "$HOME/.kanthropic/session-state.json"; exit 0' # ${MARKER}`;
 }
 
-/** A single Claude hook entry. @param {"start"|"stop"} route */
-function hookEntry(route) {
-  return { hooks: [{ type: "command", command: curlCommand(route) }] };
+/** A single Claude hook entry. @param {"thinking"|"idle"} state */
+function hookEntry(state) {
+  return { hooks: [{ type: "command", command: stateCommand(state) }] };
 }
 
 /** Serialize a value for a depth-1 key: pretty JSON, with every line after the
@@ -69,8 +67,8 @@ export function installHooks() {
 
     const hooks = (readTopLevel(src, "hooks") && typeof readTopLevel(src, "hooks") === "object")
       ? { ...readTopLevel(src, "hooks") } : {};
-    hooks.UserPromptSubmit = [...withoutOurs(hooks.UserPromptSubmit), hookEntry("start")];
-    hooks.Stop = [...withoutOurs(hooks.Stop), hookEntry("stop")];
+    hooks.UserPromptSubmit = [...withoutOurs(hooks.UserPromptSubmit), hookEntry("thinking")];
+    hooks.Stop = [...withoutOurs(hooks.Stop), hookEntry("idle")];
 
     const next = upsertTopLevel(src, "hooks", pretty(hooks));
     writeFileSync(CLAUDE_SETTINGS_PATH, next, "utf8");

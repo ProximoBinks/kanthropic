@@ -31,8 +31,9 @@ describe("Claude hook wiring", () => {
     const after = readFileSync(settings(home), "utf8");
     expect(parseable(after)).toBe(true);
     const hooks = readTopLevel(after, "hooks");
-    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("/start");
-    expect(hooks.Stop[0].hooks[0].command).toContain("/stop");
+    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("thinking");
+    expect(hooks.Stop[0].hooks[0].command).toContain("idle");
+    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("session-state.json");
     expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("kanthropic-panel");
 
     run(home, "hooks-uninstall");

@@ -17,9 +17,13 @@ const { pathToFileURL } = require("node:url");
 const PORT_FILE = path.join(os.homedir(), ".kanthropic", "panel-port");
 const PORT_RANGE = [39271, 39272, 39273, 39274, 39275];
 
-/** Dynamically import a sibling ESM module from ../src by relative path. */
+/** Dynamically import a logic module. Prefer the vendored ./lib copy (present
+ *  when installed as a real extension); fall back to ../src for F5 dev in the
+ *  repo. One source of truth: ./lib is `npm run sync-lib`'d from ../src. */
 function esm(rel) {
-  return import(pathToFileURL(path.join(__dirname, "..", "src", rel)).href);
+  const vendored = path.join(__dirname, "lib", rel);
+  const base = fs.existsSync(vendored) ? vendored : path.join(__dirname, "..", "src", rel);
+  return import(pathToFileURL(base).href);
 }
 
 let mods = null; // { kana, store, scheduler, ambient }
@@ -148,12 +152,24 @@ function startServer() {
         fs.writeFileSync(PORT_FILE, String(p), "utf8");
       } catch { /* ignore */ }
       if (statusItem) statusItem.text = "$(mortar-board) kana";
+      console.log("[kanthropic] server listening on http://127.0.0.1:" + p);
     });
   };
   tryBind();
 }
 
 function activate(context) {
+  console.log("[kanthropic] activate() called");
+  try {
+    activateInner(context);
+    console.log("[kanthropic] activate() completed");
+  } catch (e) {
+    console.error("[kanthropic] activate() FAILED:", e);
+    vscode.window.showErrorMessage("kanthropic failed to activate: " + (e && e.message ? e.message : e));
+  }
+}
+
+function activateInner(context) {
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.text = "$(mortar-board) kana";
   statusItem.tooltip = "kanthropic — open the kana panel";
