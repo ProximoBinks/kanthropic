@@ -64,50 +64,42 @@ export async function runDrill(opts) {
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
       const at = (r, col) => `\x1b[${r};${col}H`; // absolute cursor move (1-based)
 
-      // Fixed layout via absolute positioning so Enter NEVER scrolls the glyph:
-      //   row 1            header
-      //   rows 2..N-2      glyph (centered)
-      //   row N-1          prompt  ← Enter lands on the spare row below, no scroll
-      //   row N            spare / miss reading
+      // Glyph is positioned by newlines + leading spaces (the emission tmux's
+      // sixel needs — it won't render if you jump to it with an absolute move),
+      // but the PROMPT is pinned to row N-1 with row N kept spare, so Enter
+      // lands on the spare row instead of scrolling the glyph up.
       const PROMPT_ROW = Math.max(2, rowsT - 1);
-      const areaTop = 2, areaBot = PROMPT_ROW - 1;
-      const areaH = Math.max(1, areaBot - areaTop + 1);
+      const areaH = Math.max(1, PROMPT_ROW - 2); // rows 2..PROMPT_ROW-1
       const renderRows = Math.min(areaH, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
+      const padCol = (w) => " ".repeat(Math.max(0, Math.floor((cols - w) / 2)));
 
-      stdout.write(CLEAR);
-      stdout.write(at(1, 1) + `${dot} ${c.dim(`${script} · ${correct}/${seen}`)}`);
-
-      let drew = false;
+      let imgCells, emit;
       if (renderer === "sixel") {
         const sx = glyphSixel(next.glyph, renderRows * cellPx);
         if (sx) {
-          const hC = Math.min(areaH, Math.max(1, Math.round(sx.heightPx / cellPx)));
-          const wC = Math.max(1, Math.round(sx.widthPx / (cellPx / 2)));
-          const gRow = areaTop + Math.max(0, Math.floor((areaH - hC) / 2));
-          const gCol = 1 + Math.max(0, Math.floor((cols - wC) / 2));
-          stdout.write(at(gRow, gCol) + sx.sixel);
-          drew = true;
+          imgCells = Math.min(areaH, Math.max(1, Math.round(sx.heightPx / cellPx)));
+          emit = padCol(Math.round(sx.widthPx / (cellPx / 2))) + sx.sixel + "\n";
         }
       } else if (renderer === "iterm") {
         const img = glyphImage(next.glyph, renderRows);
         if (img) {
-          const gRow = areaTop + Math.max(0, Math.floor((areaH - renderRows) / 2));
-          const gCol = 1 + Math.max(0, Math.floor((cols - img.widthCells) / 2));
-          stdout.write(at(gRow, gCol) + img.escape);
-          drew = true;
+          imgCells = renderRows;
+          emit = padCol(img.widthCells) + img.escape + "\n";
         }
       }
-      if (!drew) {
+      if (!emit) {
         const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
         const lines = art || [next.glyph];
-        const gRow = areaTop + Math.max(0, Math.floor((areaH - lines.length) / 2));
-        for (let i = 0; i < lines.length; i++) {
-          const w = [...lines[i]].length;
-          stdout.write(at(gRow + i, 1 + Math.max(0, Math.floor((cols - w) / 2))) + c.accent(lines[i]));
-        }
+        imgCells = lines.length;
+        emit = lines.map((l) => padCol([...l].length) + c.accent(l)).join("\n") + "\n";
       }
+      const topPad = Math.max(0, Math.floor((areaH - imgCells) / 2));
 
+      stdout.write(CLEAR);
+      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
+      stdout.write("\n".repeat(topPad));
+      stdout.write(emit);
       stdout.write(at(PROMPT_ROW, 1) + "\x1b[K");
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed
