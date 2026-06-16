@@ -99,7 +99,18 @@ kanthropic session --resume   # forwards any args to claude (resume a conversati
 ```
 Submit a prompt to Claude → the kana pane opens below and focus jumps to it → type rōmaji →
 when Claude finishes, the pane closes and you're back in Claude. Detach with `Ctrl-b` then `d`;
-re-run `kanthropic session` to reattach.
+re-run `kanthropic session` to reattach. Scroll Claude's chat with the **mouse wheel** (hold
+**Option/Shift** to select text).
+
+**Run several windows at once** — give each session a name:
+```sh
+kanthropic session work       # → tmux session "kanthropic-work"
+kanthropic session study      # → a second, independent session
+```
+Each window gets its **own** Claude pane and its **own** kana pop-up — they open and close
+independently. Your FSRS progress is **shared** across them (one unified schedule in
+`~/.kanthropic/progress.json`). Pass claude args after the name: `kanthropic session work --resume`.
+List sessions with `tmux ls`.
 
 **Practice on its own (any terminal window):**
 ```sh
@@ -121,7 +132,7 @@ kanthropic imagetest ば                  # test image rendering here
 
 | Command | What it does |
 | --- | --- |
-| `session [claude args]` | tmux layout: Claude + auto-opening kana pane (forwards args to `claude`) |
+| `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
 | `drill [--script k]` | endless image flashcards, FSRS-scored |
 | `study [--script k] [--count N]` | a fixed scored session with a recap |
 | `install` / `uninstall` | add / remove the kana progress status line |
@@ -134,11 +145,13 @@ kanthropic imagetest ば                  # test image rendering here
 ## How it works
 
 - **Hooks** (`UserPromptSubmit` / `Stop` in `~/.claude/settings.json`) write a state file and,
-  inside the `kanthropic` tmux session, split/kill the kana pane and switch focus.
+  inside any `kanthropic*` tmux session, split/kill that session's kana pane (tracked per
+  session in `~/.kanthropic/sessions/`, so multiple windows stay independent).
 - **Rendering** rasterizes the font outline (opentype.js) and emits a **sixel** image inside
   tmux (which stores it in its grid so it survives redraws), an **iTerm2** image standalone,
   or **block-art** as a universal fallback.
-- **Scheduling** uses real FSRS (`ts-fsrs`); progress lives in `~/.kanthropic/progress.json`.
+- **Scheduling** uses real FSRS (`ts-fsrs`); progress lives in `~/.kanthropic/progress.json`,
+  shared across all sessions (atomic writes, so concurrent windows never corrupt it).
 - Everything is **reversible** — the status line and hooks are removed cleanly, preserving any
   config you already had, and your progress is kept.
 
