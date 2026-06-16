@@ -63,16 +63,22 @@ export async function runDrill(opts) {
       const cols = stdout.columns || 40;
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
 
-      // Big glyph sized to the pane; fall back to the plain character.
-      const artRows = Math.max(3, rows - 6);
+      // Big glyph sized to the live pane (height- and width-aware); fall back
+      // to the plain character. Reserve rows for the header + prompt + result.
+      const artRows = Math.max(3, rows - 5);
       const art = bigGlyph(next.glyph, artRows, Math.max(8, cols - 2), store.config.glyphStyle);
-      const glyphBlock = art
-        ? c.accent(center(art, cols))
-        : center([c.bold(next.glyph)], cols);
+      const artLines = art || [c.bold(next.glyph)];
+      const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
+      // Vertically center the glyph within the reserved area so it's balanced
+      // regardless of how tall the rendered glyph came out.
+      const topPad = Math.max(0, Math.floor((artRows - artLines.length) / 2));
+      const botPad = Math.max(0, artRows - artLines.length - topPad);
 
       stdout.write(CLEAR);
-      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n\n`);
-      stdout.write(glyphBlock + "\n\n");
+      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
+      stdout.write("\n".repeat(topPad));
+      stdout.write(glyphBlock + "\n");
+      stdout.write("\n".repeat(botPad + 1));
 
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed

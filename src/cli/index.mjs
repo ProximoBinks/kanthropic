@@ -92,12 +92,16 @@ function cmdConfig(flags) {
 
 function cmdGlyphTest(rest) {
   const ch = rest.find((a) => !a.startsWith("--")) || "ぱ";
-  stdout.write(`\n${accent("glyphtest")} — same glyph (${bold(ch)}) in each style. `
-    + `Tell me which letter is most legible, then I'll set it as default.\n`);
+  // Size to the real window so this matches what the drill will render: split
+  // the available height across the three styles, use (almost) the full width.
+  const cols = (stdout.columns || 70) - 2;
+  const rows = Math.max(6, Math.min(14, Math.floor(((stdout.rows || 40) - 8) / 3)));
+  stdout.write(`\n${accent("glyphtest")} — same glyph (${bold(ch)}) in each style at your `
+    + `window size (${cols}×${rows} per style). Tell me which is most legible.\n`);
   const labels = { half: "A · half-block", quad: "B · quadrant", braille: "C · braille" };
   for (const style of STYLES) {
     stdout.write(`\n${bold(labels[style])}\n`);
-    const lines = renderGlyph(ch, 10, 60, style);
+    const lines = renderGlyph(ch, rows, cols, style);
     stdout.write(accent((lines || ["(no font found)"]).join("\n")) + "\n");
   }
   stdout.write(`\n${dim("D · plain (your terminal font):")} ${ch}\n`);
