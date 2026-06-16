@@ -20,6 +20,7 @@ import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs"
 import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
+import { renderGlyph, STYLES } from "./bigGlyph.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -83,9 +84,24 @@ function cmdConfig(flags) {
   if (flags.script) store.config.script = scriptFrom(flags, store.config.script);
   if (flags.front && !isNaN(+flags.front)) store.config.frontMs = +flags.front;
   if (flags.back && !isNaN(+flags.back)) store.config.backMs = +flags.back;
+  if (typeof flags.style === "string" && STYLES.includes(flags.style)) store.config.glyphStyle = flags.style;
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
-    + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
+    + `style=${store.config.glyphStyle} front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
+}
+
+function cmdGlyphTest(rest) {
+  const ch = rest.find((a) => !a.startsWith("--")) || "ぱ";
+  stdout.write(`\n${accent("glyphtest")} — same glyph (${bold(ch)}) in each style. `
+    + `Tell me which letter is most legible, then I'll set it as default.\n`);
+  const labels = { half: "A · half-block", quad: "B · quadrant", braille: "C · braille" };
+  for (const style of STYLES) {
+    stdout.write(`\n${bold(labels[style])}\n`);
+    const lines = renderGlyph(ch, 10, 60, style);
+    stdout.write(accent((lines || ["(no font found)"]).join("\n")) + "\n");
+  }
+  stdout.write(`\n${dim("D · plain (your terminal font):")} ${ch}\n`);
+  stdout.write(dim(`\nSet one with:  kanthropic config --style ${STYLES.join("|")}\n`));
 }
 
 function cmdPreview(flags) {
@@ -112,7 +128,8 @@ function help() {
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
-    + `  ${bold("config")} [--front ms]  set default script / flip timing\n`
+    + `  ${bold("config")} [--style q]   set script / glyph style (half|quad|braille) / timing\n`
+    + `  ${bold("glyphtest")} [glyph]    show a glyph in every style to pick the legible one\n`
     + `  ${bold("preview")}              print a few sample ambient lines\n\n`
     + dim("  options: --script hiragana|katakana  --count N  --front <ms>  --back <ms>\n\n"));
 }
@@ -164,6 +181,7 @@ async function main() {
     }
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
+    case "glyphtest": cmdGlyphTest(rest); break;
     case "preview": cmdPreview(flags); break;
     case undefined:
     case "help":

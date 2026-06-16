@@ -1,15 +1,15 @@
 /**
- * Render a kana glyph as large Unicode braille art so it's crisp and legible in
- * a terminal pane — in particular so the dakuten (゛, two strokes) and
- * handakuten (゜, a ring) are unmistakable, and yōon combos stay readable.
+ * Render a kana glyph as large terminal art so it's legible — especially the
+ * dakuten (゛) vs handakuten (゜) marks. Rasterizes the real font outline
+ * (opentype.js) with supersampled scanline fill, then packs sub-pixels into one
+ * of three glyph styles, because how well each renders depends on the terminal:
  *
- * Braille gives 2×4 sub-dots per character cell (4× the resolution of a
- * half-block), so thin strokes survive. We rasterize the real font outline
- * (opentype.js) with supersampled scanline fill, then pack each 2×4 block of
- * sub-pixels into one braille glyph.
+ *   half    — ▀▄█        1×2 sub-pixels/cell, solid blocks, lowest res
+ *   quad    — ▘▖▝▗▚▞█…   2×2 sub-pixels/cell, solid blocks, medium res
+ *   braille — ⠿⣿…        2×4 sub-pixels/cell, highest res, but dotty in some fonts
  *
- * Degrades gracefully: if no Japanese font can be loaded, `bigGlyph` returns
- * null and the caller falls back to the plain character.
+ * Degrades gracefully: if no Japanese font loads, returns null and the caller
+ * falls back to the plain character.
  */
 import opentype from "opentype.js";
 import { readFileSync, existsSync } from "node:fs";
@@ -23,9 +23,10 @@ const CANDIDATES = [
   "/Library/Fonts/NotoSansJP-Regular.otf",
 ].filter(Boolean);
 
+export const STYLES = ["half", "quad", "braille"];
+
 let _font = null;
 let _tried = false;
-
 function font() {
   if (_tried) return _font;
   _tried = true;
@@ -33,15 +34,13 @@ function font() {
     try {
       if (!existsSync(path)) continue;
       const buf = readFileSync(path);
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-      _font = opentype.parse(ab);
+      _font = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
       return _font;
-    } catch { /* try the next candidate */ }
+    } catch { /* next */ }
   }
   return _font;
 }
 
-/** Flatten a glyph path's commands into closed polygons (arrays of points). */
 function flatten(cmds) {
   const subs = [];
   let cur = [];
@@ -49,10 +48,8 @@ function flatten(cmds) {
   const cubic = (p0, p1, p2, p3, n = 16) => {
     for (let i = 1; i <= n; i++) {
       const t = i / n, u = 1 - t;
-      cur.push({
-        x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
-        y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
-      });
+      cur.push({ x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+                 y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y });
     }
   };
   const quad = (p0, p1, p2, n = 12) => {
@@ -73,7 +70,7 @@ function flatten(cmds) {
   return subs;
 }
 
-/** Supersampled coverage → boolean sub-pixel grid [H][W] (non-zero winding). */
+/** Supersampled non-zero-winding fill → boolean grid [H][W]. */
 function rasterize(subs, bb, W, H, SS = 2) {
   const gw = bb.x2 - bb.x1, gh = bb.y2 - bb.y1;
   const cov = Array.from({ length: H }, () => new Array(W).fill(0));
@@ -96,60 +93,70 @@ function rasterize(subs, bb, W, H, SS = 2) {
       if (w !== 0) {
         const xa = Math.round((xs[i].x - bb.x1) / gw * W * SS);
         const xb = Math.round((xs[i + 1].x - bb.x1) / gw * W * SS);
-        for (let sx = Math.max(0, xa); sx < Math.min(W * SS, xb); sx++) {
-          cov[Math.floor(sy / SS)][Math.floor(sx / SS)]++;
-        }
+        for (let sx = Math.max(0, xa); sx < Math.min(W * SS, xb); sx++) cov[(sy / SS) | 0][(sx / SS) | 0]++;
       }
     }
   }
-  const thr = SS * SS * 0.35;
+  const thr = SS * SS * 0.34;
   return cov.map((row) => row.map((v) => v >= thr));
 }
 
-// sub-pixel (dx 0..1, dy 0..3) → braille dot bit
+const QUAD = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛", "▗", "▚", "▐", "▜", "▄", "▙", "▟", "█"];
 const DOT = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
+
+const CFG = {
+  half:    { sx: 1, sy: 2, pack: (g, cx, cy) => {
+    const t = g[cy * 2]?.[cx], b = g[cy * 2 + 1]?.[cx];
+    return t && b ? "█" : t ? "▀" : b ? "▄" : " ";
+  } },
+  quad:    { sx: 2, sy: 2, pack: (g, cx, cy) => {
+    const i = (g[cy * 2]?.[cx * 2] ? 1 : 0) | (g[cy * 2]?.[cx * 2 + 1] ? 2 : 0)
+            | (g[cy * 2 + 1]?.[cx * 2] ? 4 : 0) | (g[cy * 2 + 1]?.[cx * 2 + 1] ? 8 : 0);
+    return QUAD[i];
+  } },
+  braille: { sx: 2, sy: 4, pack: (g, cx, cy) => {
+    let b = 0;
+    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 4; dy++) if (g[cy * 4 + dy]?.[cx * 2 + dx]) b |= DOT[dx][dy];
+    return String.fromCharCode(0x2800 + b);
+  } },
+};
 
 /**
  * @param {string} ch a single glyph (or yōon pair)
- * @param {number} rows terminal rows of art to produce
- * @param {number} [maxCols] cap the width (cells) so wide yōon fit the pane
- * @returns {string[] | null} braille lines, or null if no font
+ * @param {number} rows terminal rows of art
+ * @param {number} [maxCols] cap width (cells)
+ * @param {"half"|"quad"|"braille"} [style]
+ * @returns {string[] | null} art lines, or null if no font
  */
-export function bigGlyph(ch, rows = 7, maxCols = Infinity) {
+export function renderGlyph(ch, rows = 8, maxCols = Infinity, style = "braille") {
   const f = font();
   if (!f) return null;
+  const cfg = CFG[style] || CFG.braille;
   try {
     const path = f.getPath(ch, 0, 0, 100);
     const bb = path.getBoundingBox();
     const gw = bb.x2 - bb.x1, gh = bb.y2 - bb.y1;
     if (!(gw > 0 && gh > 0)) return null;
-    const aspect = gw / gh;
-    // Square sub-pixels: a braille cell is 2 wide × 4 tall and a terminal cell
-    // is ~1:2, so 2px:4px maps to a square pixel. W must be even (2 per cell).
-    let H = Math.max(4, rows * 4);
-    let W = Math.max(2, Math.round((H * aspect) / 2) * 2);
-    if (W / 2 > maxCols) { // too wide → constrain by width, keep aspect
-      W = Math.max(2, maxCols * 2);
-      H = Math.max(4, Math.round((W / aspect) / 4) * 4);
-    }
-    const grid = rasterize(flatten(path.commands), bb, W, H, 2);
-
+    const a = gw / gh;
+    // Cell footprint is style-independent: a terminal cell is ~1 wide : 2 tall,
+    // so a square glyph occupies cellsW = 2·rows·aspect cells.
+    let cellsH = Math.max(2, rows);
+    let cellsW = Math.max(1, Math.round(2 * cellsH * a));
+    if (cellsW > maxCols) { cellsW = Math.max(1, maxCols); cellsH = Math.max(2, Math.round(cellsW / (2 * a))); }
+    const grid = rasterize(flatten(path.commands), bb, cellsW * cfg.sx, cellsH * cfg.sy, 2);
     const lines = [];
-    for (let cy = 0; cy < H / 4; cy++) {
+    for (let cy = 0; cy < cellsH; cy++) {
       let line = "";
-      for (let cx = 0; cx < W / 2; cx++) {
-        let bits = 0;
-        for (let dx = 0; dx < 2; dx++) {
-          for (let dy = 0; dy < 4; dy++) {
-            if (grid[cy * 4 + dy]?.[cx * 2 + dx]) bits |= DOT[dx][dy];
-          }
-        }
-        line += String.fromCharCode(0x2800 + bits);
-      }
-      lines.push(line.replace(/⠀+$/, "")); // trim trailing blank braille
+      for (let cx = 0; cx < cellsW; cx++) line += cfg.pack(grid, cx, cy);
+      lines.push(line.replace(/[ ⠀]+$/, ""));
     }
     return lines;
   } catch {
     return null;
   }
+}
+
+/** Back-compat default used by the drill. */
+export function bigGlyph(ch, rows = 8, maxCols = Infinity, style = "braille") {
+  return renderGlyph(ch, rows, maxCols, style);
 }
