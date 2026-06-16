@@ -21,8 +21,16 @@ export function makeLineReader() {
     while (waiters.length) waiters.shift()(null);
   });
   return {
-    /** @returns {Promise<string|null>} */
-    next() {
+    /**
+     * @param {string} [prompt] shown via readline's own prompt mechanism, so it
+     *   is protected from backspace (the bug where deleting your answer ate the
+     *   glyph). @returns {Promise<string|null>}
+     */
+    next(prompt = "") {
+      if (prompt) {
+        if (stdin.isTTY) { rl.setPrompt(prompt); rl.prompt(); }
+        else stdout.write(prompt);
+      }
       if (queue.length) return Promise.resolve(queue.shift());
       if (closed) return Promise.resolve(null);
       return new Promise((res) => waiters.push(res));

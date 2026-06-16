@@ -26,8 +26,9 @@ const MARKER = "kanthropic-panel";
 const ON_THINKING = join(KANTHROPIC_DIR, "on-thinking.sh");
 const ON_IDLE = join(KANTHROPIC_DIR, "on-idle.sh");
 
-// Height (rows) of the kana pane that opens below Claude.
-const PANE_ROWS = 12;
+// Height (rows) of the kana pane that opens below Claude — tall enough for the
+// big-glyph rendering to be legible.
+const PANE_ROWS = 18;
 
 // Open the kana pane below Claude. Guarded to the "kanthropic" tmux session so
 // it never disturbs other sessions. Kills any stale kana pane first so prompts

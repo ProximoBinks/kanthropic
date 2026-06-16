@@ -17,6 +17,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "opentype.js": "^2.0.0",
     "ts-fsrs": "^5.4.1"
   },
   "devDependencies": {

@@ -76,8 +76,7 @@ export async function runStudy(opts) {
       const entry = queue[i];
       const g = glyphOf(entry, script);
       const progress = c.dim(`${i + 1}/${queue.length}  ·  ${correct}✓`);
-      stdout.write(`${progress}   ${c.accent(c.bold(g))}   → `);
-      const answer = await reader.next();
+      const answer = await reader.next(`${progress}   ${c.accent(c.bold(g))}   → `);
       if (answer === null) {
         // stdin closed (EOF / Ctrl+D) — end the session early, keeping progress.
         stdout.write("\n");
