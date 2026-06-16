@@ -46,6 +46,8 @@ function applyTerminalConfig(target = TMUX_SESSION) {
     ["set-option", "-t", target, "-ga", "terminal-overrides", ",*256col*:Tc"],
     // let inline-image escapes (iTerm2/Sixel) pass through to the outer terminal
     ["set-option", "-t", target, "allow-passthrough", "on"],
+    // mouse wheel scrolls the pane's scrollback (so you can scroll Claude's chat)
+    ["set-option", "-t", target, "mouse", "on"],
   ];
   // Propagate a UTF-8 locale to programs started in the session.
   const lang = env.LC_ALL || env.LANG || "en_US.UTF-8";
@@ -88,6 +90,10 @@ export function runSession(claudeArgs = []) {
     // One pane running Claude (with any pass-through args like --resume); the
     // hooks open/close the kana pane below it.
     const claudeCmd = ["claude", ...claudeArgs].join(" ");
+    // Bigger scrollback (history-limit only applies to panes created after it),
+    // set before the session so the Claude pane gets it.
+    try { execFileSync("tmux", ["set-option", "-g", "history-limit", "50000"], { stdio: "ignore" }); }
+    catch { /* best-effort */ }
     execFileSync("tmux", ["new-session", "-d", "-s", TMUX_SESSION, "-n", "kanthropic"]);
     applyTerminalConfig(); // set terminfo/locale BEFORE launching claude
     applyTheme();
