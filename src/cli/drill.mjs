@@ -33,6 +33,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_GLYPH_ROWS = 16;
 const MAX_GLYPH_COLS = 42;
 
+/** Center each line within `cols` and join. @param {string[]} lines */
+function center(lines, cols) {
+  return lines.map((l) => " ".repeat(Math.max(0, Math.floor((cols - [...l].length) / 2))) + l).join("\n");
+}
+
 /** @param {{ script: import("../data/kana.mjs").Script }} opts */
 export async function runDrill(opts) {
   const script = opts.script;
@@ -59,48 +64,58 @@ export async function runDrill(opts) {
       lastGlyph = next.glyph;
       const entry = entryByGlyph(script, next.glyph);
 
-      const rowsT = stdout.rows || 16;
+      const rows = stdout.rows || 16;
       const cols = stdout.columns || 40;
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
-      const at = (r, col) => `\x1b[${r};${col}H`; // absolute cursor move (1-based)
 
-      // Glyph is positioned by newlines + leading spaces (the emission tmux's
-      // sixel needs — it won't render if you jump to it with an absolute move),
-      // but the PROMPT is pinned to row N-1 with row N kept spare, so Enter
-      // lands on the spare row instead of scrolling the glyph up.
-      const PROMPT_ROW = Math.max(2, rowsT - 1);
-      const areaH = Math.max(1, PROMPT_ROW - 2); // rows 2..PROMPT_ROW-1
-      const renderRows = Math.min(areaH, MAX_GLYPH_ROWS);
+      // Glyph centered with newlines + leading spaces (the emission tmux's sixel
+      // needs — it won't render if you jump to it with an absolute cursor move).
+      // Reserve 4 rows (header + prompt + a SPARE row below it) so the newline
+      // Enter emits lands on the spare row instead of scrolling the glyph up.
+      const availRows = Math.max(3, rows - 4);
+      const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
-      const padCol = (w) => " ".repeat(Math.max(0, Math.floor((cols - w) / 2)));
 
-      let imgCells, emit;
+      stdout.write(CLEAR);
+      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
+
+      let drew = false;
       if (renderer === "sixel") {
         const sx = glyphSixel(next.glyph, renderRows * cellPx);
         if (sx) {
-          imgCells = Math.min(areaH, Math.max(1, Math.round(sx.heightPx / cellPx)));
-          emit = padCol(Math.round(sx.widthPx / (cellPx / 2))) + sx.sixel + "\n";
+          const heightCells = Math.max(1, Math.round(sx.heightPx / cellPx));
+          const widthCells = Math.max(1, Math.round(sx.widthPx / (cellPx / 2)));
+          const topPad = Math.max(0, Math.floor((availRows - heightCells) / 2));
+          const botPad = Math.max(0, availRows - heightCells - topPad);
+          const padCols = Math.max(0, Math.floor((cols - widthCells) / 2));
+          stdout.write("\n".repeat(topPad));
+          stdout.write(" ".repeat(padCols) + sx.sixel + "\n");
+          stdout.write("\n".repeat(botPad));
+          drew = true;
         }
       } else if (renderer === "iterm") {
         const img = glyphImage(next.glyph, renderRows);
         if (img) {
-          imgCells = renderRows;
-          emit = padCol(img.widthCells) + img.escape + "\n";
+          const topPad = Math.max(0, Math.floor((availRows - renderRows) / 2));
+          const botPad = Math.max(0, availRows - renderRows - topPad);
+          const padCols = Math.max(0, Math.floor((cols - img.widthCells) / 2));
+          stdout.write("\n".repeat(topPad));
+          stdout.write(" ".repeat(padCols) + img.escape + "\n");
+          stdout.write("\n".repeat(botPad));
+          drew = true;
         }
       }
-      if (!emit) {
+      if (!drew) {
         const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
-        const lines = art || [next.glyph];
-        imgCells = lines.length;
-        emit = lines.map((l) => padCol([...l].length) + c.accent(l)).join("\n") + "\n";
+        const artLines = art || [c.bold(next.glyph)];
+        const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
+        const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
+        const botPad = Math.max(0, availRows - artLines.length - topPad);
+        stdout.write("\n".repeat(topPad));
+        stdout.write(glyphBlock + "\n");
+        stdout.write("\n".repeat(botPad));
       }
-      const topPad = Math.max(0, Math.floor((areaH - imgCells) / 2));
 
-      stdout.write(CLEAR);
-      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
-      stdout.write("\n".repeat(topPad));
-      stdout.write(emit);
-      stdout.write(at(PROMPT_ROW, 1) + "\x1b[K");
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed
 
@@ -111,16 +126,14 @@ export async function runDrill(opts) {
       const aw = [...answer].length;
       if (ok) {
         correct++;
-        // ✓ inline, right after your answer (Enter dropped the cursor a line).
-        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}`);
+        // ✓ inline, just after your answer (Enter dropped the cursor a line).
+        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}\x1b[B\r`);
         await sleep(450);
       } else {
-        // ✗ inline; the reading on the spare last row. Park the cursor back on
-        // the prompt row so the continue-Enter can't scroll either.
-        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.red("✗")}`);
-        stdout.write(at(rowsT, 1) + "\x1b[K" + `${c.dim("=")} ${c.bold(entry.romaji)}  ${c.dim("· Enter")}`);
-        stdout.write(at(PROMPT_ROW, 1));
-        await reader.next("");
+        // ✗ + reading inline on the same line; brief pause to read it (no second
+        // Enter, which would scroll from the spare bottom row).
+        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
+        await sleep(1600);
       }
     }
   } finally {
