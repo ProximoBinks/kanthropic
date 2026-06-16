@@ -72,12 +72,11 @@ export async function runDrill(opts) {
       // needs — it won't render if you jump to it with an absolute cursor move).
       // Reserve 4 rows (header + prompt + a SPARE row below it) so the newline
       // Enter emits lands on the spare row instead of scrolling the glyph up.
-      const availRows = Math.max(3, rows - 4);
+      const availRows = Math.max(3, rows - 3);
       const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
 
-      stdout.write(CLEAR);
-      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
+      stdout.write(CLEAR); // no top header — it flashed each card; status is in the prompt now
 
       let drew = false;
       if (renderer === "sixel") {
@@ -121,7 +120,10 @@ export async function runDrill(opts) {
       // absolute move is done AFTER the botPad newlines (which commit the sixel
       // into tmux's grid) — moving before that commit makes tmux drop the image.
       stdout.write(`\x1b[${Math.max(2, rows - 1)};1H`);
-      const answer = await reader.next(c.dim("→ "));
+      // Status (dot + script + score) lives on the prompt line now.
+      const status = `${script} ${correct}/${seen}`;
+      const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset
+      const answer = await reader.next(`${dot} ${c.dim(status)}  ${c.dim("→")} `);
       if (answer === null) break; // pane closed
 
       const ok = checkAnswer(answer, entry);
@@ -132,12 +134,12 @@ export async function runDrill(opts) {
       if (ok) {
         correct++;
         // ✓ inline, just after your answer (Enter dropped the cursor a line).
-        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}\x1b[B\r`);
+        stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.green("✓")}\x1b[B\r`);
         await sleep(450);
       } else {
         // ✗ + reading inline on the same line; brief pause to read it (no second
         // Enter, which would scroll from the spare bottom row).
-        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
+        stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
         await sleep(1600);
       }
     }
