@@ -116,6 +116,11 @@ export async function runDrill(opts) {
         stdout.write("\n".repeat(botPad));
       }
 
+      // Pin the prompt to a fixed row with a spare row below it, so the newline
+      // Enter emits lands on the spare row instead of scrolling the glyph. This
+      // absolute move is done AFTER the botPad newlines (which commit the sixel
+      // into tmux's grid) — moving before that commit makes tmux drop the image.
+      stdout.write(`\x1b[${Math.max(2, rows - 1)};1H`);
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed
 
