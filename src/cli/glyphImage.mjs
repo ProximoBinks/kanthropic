@@ -120,11 +120,19 @@ export function glyphImage(ch, rows, color = ACCENT) {
 
 /**
  * Decide whether to attempt image rendering.
+ *
+ * NEVER inside tmux: tmux is a cell-grid multiplexer that doesn't store inline
+ * images, so it erases passthrough graphics on its next redraw (status tick,
+ * card change) — leaving a broken sliver. The `kanthropic session` pane is
+ * tmux, so it falls back to block-art; standalone `kanthropic drill` gets
+ * real images.
+ *
  * @param {"on"|"off"|"auto"} mode
  */
 export function imagesEnabled(mode) {
-  if (mode === "on") return true;
   if (mode === "off") return false;
+  if (process.env.TMUX) return false; // images don't survive tmux redraws
+  if (mode === "on") return true;
   // auto: only on a TTY in a terminal known to support inline images.
   if (!process.stdout.isTTY) return false;
   const tp = process.env.TERM_PROGRAM || "";

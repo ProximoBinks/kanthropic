@@ -113,6 +113,10 @@ function cmdGlyphTest(rest) {
 
 function cmdImageTest(rest) {
   const ch = rest.find((a) => !a.startsWith("--")) || "ば";
+  if (process.env.TMUX) {
+    stdout.write(`\n${dim("⚠ You're inside tmux — images don't survive tmux redraws, so the")}\n`
+      + `${dim("  session pane always uses block-art. Run this in a plain terminal window.")}\n`);
+  }
   stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} as a real image (iTerm2 protocol):\n\n`);
   const img = glyphImage(ch, 10);
   if (!img) { stdout.write(dim("(no Japanese font found to rasterize)\n")); return; }
