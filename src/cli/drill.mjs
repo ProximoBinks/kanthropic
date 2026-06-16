@@ -33,15 +33,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_GLYPH_ROWS = 16;
 const MAX_GLYPH_COLS = 42;
 
-/** Center each line within `cols` and join. @param {string[]} lines */
-function center(lines, cols) {
-  return lines.map((l) => {
-    // pad by visible width (strip half-block trailing already done); l is plain
-    const pad = Math.max(0, Math.floor((cols - [...l].length) / 2));
-    return " ".repeat(pad) + l;
-  }).join("\n");
-}
-
 /** @param {{ script: import("../data/kana.mjs").Script }} opts */
 export async function runDrill(opts) {
   const script = opts.script;
@@ -68,59 +59,56 @@ export async function runDrill(opts) {
       lastGlyph = next.glyph;
       const entry = entryByGlyph(script, next.glyph);
 
-      const rows = stdout.rows || 16;
+      const rowsT = stdout.rows || 16;
       const cols = stdout.columns || 40;
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
+      const at = (r, col) => `\x1b[${r};${col}H`; // absolute cursor move (1-based)
 
-      // Render the glyph at a sensible CAPPED size (so a full-screen window
-      // doesn't blow it up), then CENTER it in the available space. Prefer a
-      // real image (iTerm2 protocol); fall back to block-art.
-      const availRows = Math.max(3, rows - 3); // header + prompt + result
-      const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
+      // Fixed layout via absolute positioning so Enter NEVER scrolls the glyph:
+      //   row 1            header
+      //   rows 2..N-2      glyph (centered)
+      //   row N-1          prompt  ← Enter lands on the spare row below, no scroll
+      //   row N            spare / miss reading
+      const PROMPT_ROW = Math.max(2, rowsT - 1);
+      const areaTop = 2, areaBot = PROMPT_ROW - 1;
+      const areaH = Math.max(1, areaBot - areaTop + 1);
+      const renderRows = Math.min(areaH, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
 
       stdout.write(CLEAR);
-      stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
+      stdout.write(at(1, 1) + `${dot} ${c.dim(`${script} · ${correct}/${seen}`)}`);
 
-      // Sixel image (works inside sixel-capable tmux), iTerm2 image (standalone),
-      // or block-art fallback.
       let drew = false;
       if (renderer === "sixel") {
         const sx = glyphSixel(next.glyph, renderRows * cellPx);
         if (sx) {
-          const heightCells = Math.max(1, Math.round(sx.heightPx / cellPx));
-          const widthCells = Math.max(1, Math.round(sx.widthPx / (cellPx / 2)));
-          const topPad = Math.max(0, Math.floor((availRows - heightCells) / 2));
-          const botPad = Math.max(0, availRows - heightCells - topPad);
-          const padCols = Math.max(0, Math.floor((cols - widthCells) / 2));
-          stdout.write("\n".repeat(topPad));
-          stdout.write(" ".repeat(padCols) + sx.sixel + "\n");
-          stdout.write("\n".repeat(botPad));
+          const hC = Math.min(areaH, Math.max(1, Math.round(sx.heightPx / cellPx)));
+          const wC = Math.max(1, Math.round(sx.widthPx / (cellPx / 2)));
+          const gRow = areaTop + Math.max(0, Math.floor((areaH - hC) / 2));
+          const gCol = 1 + Math.max(0, Math.floor((cols - wC) / 2));
+          stdout.write(at(gRow, gCol) + sx.sixel);
           drew = true;
         }
       } else if (renderer === "iterm") {
         const img = glyphImage(next.glyph, renderRows);
         if (img) {
-          const topPad = Math.max(0, Math.floor((availRows - renderRows) / 2));
-          const botPad = Math.max(0, availRows - renderRows - topPad);
-          const padCols = Math.max(0, Math.floor((cols - img.widthCells) / 2));
-          stdout.write("\n".repeat(topPad));
-          stdout.write(" ".repeat(padCols) + img.escape + "\n");
-          stdout.write("\n".repeat(botPad));
+          const gRow = areaTop + Math.max(0, Math.floor((areaH - renderRows) / 2));
+          const gCol = 1 + Math.max(0, Math.floor((cols - img.widthCells) / 2));
+          stdout.write(at(gRow, gCol) + img.escape);
           drew = true;
         }
       }
       if (!drew) {
         const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
-        const artLines = art || [c.bold(next.glyph)];
-        const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
-        const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
-        const botPad = Math.max(0, availRows - artLines.length - topPad);
-        stdout.write("\n".repeat(topPad));
-        stdout.write(glyphBlock + "\n");
-        stdout.write("\n".repeat(botPad));
+        const lines = art || [next.glyph];
+        const gRow = areaTop + Math.max(0, Math.floor((areaH - lines.length) / 2));
+        for (let i = 0; i < lines.length; i++) {
+          const w = [...lines[i]].length;
+          stdout.write(at(gRow + i, 1 + Math.max(0, Math.floor((cols - w) / 2))) + c.accent(lines[i]));
+        }
       }
 
+      stdout.write(at(PROMPT_ROW, 1) + "\x1b[K");
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed
 
@@ -128,16 +116,19 @@ export async function runDrill(opts) {
       store.cards[next.glyph] = gradeCard(script, next.glyph, store.cards[next.glyph], ok);
       save(store);
       seen++;
+      const aw = [...answer].length;
       if (ok) {
         correct++;
-        // Put the ✓ on the SAME line, just after what you typed: Enter dropped
-        // the cursor a line; move up, forward past "→ <answer>", mark, restore.
-        const aw = [...answer].length;
-        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}\x1b[B\r`);
+        // ✓ inline, right after your answer (Enter dropped the cursor a line).
+        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.green("✓")}`);
         await sleep(450);
       } else {
-        stdout.write(`${c.red("✗")}  ${c.dim("answer:")} ${c.bold(entry.romaji)}  ${c.dim("(Enter)")}`);
-        await reader.next(""); // wait so you can see the answer before moving on
+        // ✗ inline; the reading on the spare last row. Park the cursor back on
+        // the prompt row so the continue-Enter can't scroll either.
+        stdout.write(`\x1b[A\x1b[${3 + aw}C${c.red("✗")}`);
+        stdout.write(at(rowsT, 1) + "\x1b[K" + `${c.dim("=")} ${c.bold(entry.romaji)}  ${c.dim("· Enter")}`);
+        stdout.write(at(PROMPT_ROW, 1));
+        await reader.next("");
       }
     }
   } finally {
