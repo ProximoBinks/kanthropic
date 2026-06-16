@@ -76,7 +76,9 @@ export async function runDrill(opts) {
       const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
       const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
 
-      stdout.write(CLEAR); // no top header — it flashed each card; status is in the prompt now
+      // Hide the cursor while we redraw so it doesn't flash at the top-left
+      // (where CLEAR homes it) before jumping to the prompt; shown again below.
+      stdout.write("\x1b[?25l" + CLEAR); // no top header — status is in the prompt now
 
       let drew = false;
       if (renderer === "sixel") {
@@ -119,7 +121,7 @@ export async function runDrill(opts) {
       // Enter emits lands on the spare row instead of scrolling the glyph. This
       // absolute move is done AFTER the botPad newlines (which commit the sixel
       // into tmux's grid) — moving before that commit makes tmux drop the image.
-      stdout.write(`\x1b[${Math.max(2, rows - 1)};1H`);
+      stdout.write(`\x1b[${Math.max(2, rows - 1)};1H\x1b[?25h`); // move to prompt + show cursor
       // Status (dot + script + score) lives on the prompt line now.
       const status = `${script} ${correct}/${seen}`;
       const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset
@@ -145,6 +147,7 @@ export async function runDrill(opts) {
     }
   } finally {
     clearInterval(poll);
+    stdout.write("\x1b[?25h"); // always restore the cursor on exit
     reader.close();
   }
   stdout.write("\n" + c.dim(`${correct}/${seen} this run`) + "\n");
