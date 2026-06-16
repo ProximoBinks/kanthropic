@@ -65,7 +65,7 @@ export async function runDrill(opts) {
 
       // Big glyph sized to the pane; fall back to the plain character.
       const artRows = Math.max(3, rows - 6);
-      const art = bigGlyph(next.glyph, artRows * 2);
+      const art = bigGlyph(next.glyph, artRows, Math.max(8, cols - 2));
       const glyphBlock = art
         ? c.accent(center(art, cols))
         : center([c.bold(next.glyph)], cols);
