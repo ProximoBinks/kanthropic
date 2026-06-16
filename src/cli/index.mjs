@@ -94,7 +94,7 @@ function cmdGlyphTest(rest) {
   const ch = rest.find((a) => !a.startsWith("--")) || "ぱ";
   // Size to the real window so this matches what the drill will render: split
   // the available height across the three styles, use (almost) the full width.
-  const cols = (stdout.columns || 70) - 2;
+  const cols = Math.min((stdout.columns || 70) - 2, 48);
   const rows = Math.max(6, Math.min(14, Math.floor(((stdout.rows || 40) - 8) / 3)));
   stdout.write(`\n${accent("glyphtest")} — same glyph (${bold(ch)}) in each style at your `
     + `window size (${cols}×${rows} per style). Tell me which is most legible.\n`);

@@ -27,6 +27,11 @@ const c = {
 const CLEAR = "\x1b[2J\x1b[3J\x1b[H"; // clear screen + scrollback + home
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Cap the glyph size so a big terminal window doesn't scale it into a giant,
+// thin, ugly shape. ~16 rows tall is large and crisp; bigger just looks wrong.
+const MAX_GLYPH_ROWS = 16;
+const MAX_GLYPH_COLS = 42;
+
 /** Center each line within `cols` and join. @param {string[]} lines */
 function center(lines, cols) {
   return lines.map((l) => {
@@ -63,22 +68,23 @@ export async function runDrill(opts) {
       const cols = stdout.columns || 40;
       const dot = readSessionState() === "thinking" ? c.accent("●") : c.dim("○");
 
-      // Big glyph sized to the live pane (height- and width-aware); fall back
-      // to the plain character. Reserve rows for the header + prompt + result.
-      const artRows = Math.max(3, rows - 5);
-      const art = bigGlyph(next.glyph, artRows, Math.max(8, cols - 2), store.config.glyphStyle);
+      // Render the glyph at a sensible CAPPED size (so a full-screen window
+      // doesn't blow it up to a giant thin line), then CENTER it in whatever
+      // space is available. Both height- and width-aware.
+      const availRows = Math.max(3, rows - 3); // header + prompt + result
+      const renderRows = Math.min(availRows, MAX_GLYPH_ROWS);
+      const maxW = Math.max(8, Math.min(cols - 2, MAX_GLYPH_COLS));
+      const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
       const artLines = art || [c.bold(next.glyph)];
       const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
-      // Vertically center the glyph within the reserved area so it's balanced
-      // regardless of how tall the rendered glyph came out.
-      const topPad = Math.max(0, Math.floor((artRows - artLines.length) / 2));
-      const botPad = Math.max(0, artRows - artLines.length - topPad);
+      const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
+      const botPad = Math.max(0, availRows - artLines.length - topPad);
 
       stdout.write(CLEAR);
       stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
       stdout.write("\n".repeat(topPad));
       stdout.write(glyphBlock + "\n");
-      stdout.write("\n".repeat(botPad + 1));
+      stdout.write("\n".repeat(botPad));
 
       const answer = await reader.next(c.dim("→ "));
       if (answer === null) break; // pane closed
