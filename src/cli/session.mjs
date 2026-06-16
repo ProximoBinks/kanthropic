@@ -17,15 +17,15 @@
 import { spawnSync, execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { stdout, env } from "node:process";
-import { KANTHROPIC_DIR, KANA_PANE_PATH, TMUX_SESSION } from "../core/paths.mjs";
+import { SESSIONS_DIR, sessionPanePath, TMUX_SESSION } from "../core/paths.mjs";
 
 function tmuxAvailable() {
   try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); return true; }
   catch { return false; }
 }
 
-function sessionExists() {
-  try { execFileSync("tmux", ["has-session", "-t", TMUX_SESSION], { stdio: "ignore" }); return true; }
+function sessionExists(target) {
+  try { execFileSync("tmux", ["has-session", "-t", target], { stdio: "ignore" }); return true; }
   catch { return false; }
 }
 
@@ -76,16 +76,23 @@ export function applyTheme(target = TMUX_SESSION) {
   }
 }
 
-/** @param {string[]} [claudeArgs] forwarded to `claude` (e.g. ["--resume"]). */
-export function runSession(claudeArgs = []) {
+/**
+ * @param {string} [name] optional session name → tmux session `kanthropic-<name>`
+ *   so you can run several independent windows. Default: `kanthropic`.
+ * @param {string[]} [claudeArgs] forwarded to `claude` (e.g. ["--resume"]).
+ */
+export function runSession(name, claudeArgs = []) {
   if (!tmuxAvailable()) {
     stdout.write("\x1b[31m✗ tmux is not installed.\x1b[0m  Install it with: brew install tmux\n");
     process.exit(1);
   }
 
-  if (!sessionExists()) {
-    mkdirSync(KANTHROPIC_DIR, { recursive: true });
-    writeFileSync(KANA_PANE_PATH, "", "utf8"); // clear any stale pane id
+  const clean = (name || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const session = clean ? `${TMUX_SESSION}-${clean}` : TMUX_SESSION;
+
+  if (!sessionExists(session)) {
+    mkdirSync(SESSIONS_DIR, { recursive: true });
+    writeFileSync(sessionPanePath(session), "", "utf8"); // clear any stale pane id
 
     // One pane running Claude (with any pass-through args like --resume); the
     // hooks open/close the kana pane below it.
@@ -94,22 +101,22 @@ export function runSession(claudeArgs = []) {
     // set before the session so the Claude pane gets it.
     try { execFileSync("tmux", ["set-option", "-g", "history-limit", "50000"], { stdio: "ignore" }); }
     catch { /* best-effort */ }
-    execFileSync("tmux", ["new-session", "-d", "-s", TMUX_SESSION, "-n", "kanthropic"]);
-    applyTerminalConfig(); // set terminfo/locale BEFORE launching claude
-    applyTheme();
-    execFileSync("tmux", ["send-keys", "-t", `${TMUX_SESSION}:0`, claudeCmd, "Enter"]);
-    stdout.write(`\x1b[38;5;176m✓ kanthropic session ready.\x1b[0m  (\`${claudeCmd}\`)  Type a prompt — a kana `
+    execFileSync("tmux", ["new-session", "-d", "-s", session, "-n", "kanthropic"]);
+    applyTerminalConfig(session); // set terminfo/locale BEFORE launching claude
+    applyTheme(session);
+    execFileSync("tmux", ["send-keys", "-t", `${session}:0`, claudeCmd, "Enter"]);
+    stdout.write(`\x1b[38;5;176m✓ ${session} ready.\x1b[0m  (\`${claudeCmd}\`)  Type a prompt — a kana `
       + "box opens below while it thinks, and closes when it's done.\n"
       + "\x1b[2m  (detach: Ctrl-b then d)\x1b[0m\n");
   } else {
     if (claudeArgs.length) {
-      stdout.write("\x1b[2mA kanthropic session already exists — attaching (args ignored). "
+      stdout.write(`\x1b[2m${session} already exists — attaching (args ignored). `
         + "To resume there, run `claude --resume` inside the Claude pane.\x1b[0m\n");
     } else {
-      stdout.write("\x1b[2mAttaching to existing kanthropic session…\x1b[0m\n");
+      stdout.write(`\x1b[2mAttaching to existing ${session}…\x1b[0m\n`);
     }
   }
 
-  const r = spawnSync("tmux", ["attach", "-t", TMUX_SESSION], { stdio: "inherit" });
+  const r = spawnSync("tmux", ["attach", "-t", session], { stdio: "inherit" });
   process.exit(r.status ?? 0);
 }

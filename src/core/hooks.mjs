@@ -33,25 +33,33 @@ const PANE_ROWS = 18;
 // Open the kana pane below Claude. Guarded to the "kanthropic" tmux session so
 // it never disturbs other sessions. Kills any stale kana pane first so prompts
 // never stack panes, then records the new pane id for on-idle to close.
+// The pane id is tracked per tmux session ($SESSION) so several concurrent
+// `kanthropic session` windows each open/close their OWN kana pane.
 const THINKING_SCRIPT = `#!/bin/sh
-mkdir -p "$HOME/.kanthropic"
+mkdir -p "$HOME/.kanthropic/sessions"
 printf '{"state":"thinking","at":%s}' "$(date +%s)" > "$HOME/.kanthropic/session-state.json"
 [ -n "$TMUX_PANE" ] || exit 0
-[ "$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)" = "kanthropic" ] || exit 0
-OLD=$(cat "$HOME/.kanthropic/kana-pane" 2>/dev/null)
+SESSION=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
+case "$SESSION" in kanthropic*) ;; *) exit 0 ;; esac
+PANE="$HOME/.kanthropic/sessions/$SESSION.pane"
+OLD=$(cat "$PANE" 2>/dev/null)
 [ -n "$OLD" ] && tmux kill-pane -t "$OLD" 2>/dev/null
 NEW=$(tmux split-window -v -l ${PANE_ROWS} -P -F '#{pane_id}' -t "$TMUX_PANE" 'kanthropic drill' 2>/dev/null)
-[ -n "$NEW" ] && printf '%s' "$NEW" > "$HOME/.kanthropic/kana-pane"
+[ -n "$NEW" ] && printf '%s' "$NEW" > "$PANE"
 exit 0
 `;
 
-// Close the kana pane (focus falls back to Claude automatically).
+// Close the kana pane for this session (focus falls back to Claude).
 const IDLE_SCRIPT = `#!/bin/sh
-mkdir -p "$HOME/.kanthropic"
+mkdir -p "$HOME/.kanthropic/sessions"
 printf '{"state":"idle","at":%s}' "$(date +%s)" > "$HOME/.kanthropic/session-state.json"
-OLD=$(cat "$HOME/.kanthropic/kana-pane" 2>/dev/null)
+[ -n "$TMUX_PANE" ] || exit 0
+SESSION=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
+case "$SESSION" in kanthropic*) ;; *) exit 0 ;; esac
+PANE="$HOME/.kanthropic/sessions/$SESSION.pane"
+OLD=$(cat "$PANE" 2>/dev/null)
 [ -n "$OLD" ] && tmux kill-pane -t "$OLD" 2>/dev/null
-: > "$HOME/.kanthropic/kana-pane"
+: > "$PANE"
 exit 0
 `;
 

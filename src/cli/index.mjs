@@ -151,7 +151,7 @@ function help() {
   stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Claude Code thinks\n\n`
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
-    + `  ${bold("session")} [claude args] seamless tmux layout (forwards args, e.g. --resume, to claude)\n`
+    + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
     + `  ${bold("drill")} [--script k]   endless kana input box for a side pane (reacts to Claude)\n`
     + `  ${bold("study")} [--script k]   typed, scored session — run at the idle prompt\n`
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
@@ -192,9 +192,15 @@ async function main() {
     case "drill":
       await runDrill({ script: scriptFrom(flags, store.config.script) });
       break;
-    case "session":
-      runSession(rest); // forward args (e.g. --resume, --continue) to claude
+    case "session": {
+      // `session [name] [claude args]` — a leading non-flag token names the
+      // session (kanthropic-<name>); the rest pass through to claude.
+      let sName, cArgs;
+      if (rest[0] && !rest[0].startsWith("-")) { sName = rest[0]; cArgs = rest.slice(1); }
+      else { cArgs = rest; }
+      runSession(sName, cArgs);
       break;
+    }
     case "hooks-install": {
       const r = installHooks();
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
