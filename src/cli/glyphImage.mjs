@@ -244,7 +244,10 @@ function tmuxHasSixel() {
  */
 export function pickRenderer(mode) {
   if (mode === "off") return "blocks";
-  if (process.env.TMUX) return tmuxHasSixel() ? "sixel" : "blocks";
+  if (process.env.TMUX) {
+    if (mode === "on") return "sixel";          // force the image in the session
+    return tmuxHasSixel() ? "sixel" : "blocks"; // auto: only when detected
+  }
   if (mode === "on") return "iterm";
   if (!process.stdout.isTTY) return "blocks";
   const tp = process.env.TERM_PROGRAM || "";
