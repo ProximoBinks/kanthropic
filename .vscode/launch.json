@@ -1,0 +1,14 @@
+{
+  // Press F5 (or Run ▸ "Run kanthropic panel") to launch a VS Code window with
+  // the kanthropic extension loaded. Open a terminal there, run `claude`, and
+  // the kana panel opens beside it while Claude thinks.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run kanthropic panel",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/kanthropic-vscode"]
+    }
+  ]
+}

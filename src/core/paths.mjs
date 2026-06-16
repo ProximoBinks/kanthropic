@@ -18,6 +18,10 @@ export const STATUSLINE_SCRIPT_PATH = join(KANTHROPIC_DIR, "kanthropic-statuslin
  *  card above the user's own HUD instead of clobbering it. */
 export const PREV_STATUSLINE_PATH = join(KANTHROPIC_DIR, "prev-statusline.json");
 
+/** The loopback port the VS Code panel binds, written on activate so the
+ *  Claude hooks know where to curl. */
+export const PANEL_PORT_PATH = join(KANTHROPIC_DIR, "panel-port");
+
 /** Claude Code's settings file — the surface we edit. */
 export const CLAUDE_SETTINGS_PATH = join(home, ".claude", "settings.json");
 

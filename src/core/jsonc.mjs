@@ -93,7 +93,11 @@ function findTopLevelValueSpan(src, key) {
       if (c === "/" && n === "/") { c2 = "line"; j++; continue; }
       if (c === "/" && n === "*") { c2 = "block"; j++; continue; }
       if (c === "{" || c === "[") d++;
-      else if (c === "}" || c === "]") { if (d === 0) return j; d--; }
+      else if (c === "}" || c === "]") {
+        if (d === 0) return j;       // hit the PARENT's close → primitive value ended
+        d--;
+        if (d === 0) return j + 1;   // closed the value's OWN structure → end right after it
+      }
       else if (c === "," && d === 0) return j;
     }
     return j;

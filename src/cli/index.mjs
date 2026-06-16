@@ -16,6 +16,7 @@ import { ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
 import { load, save } from "../core/store.mjs";
 import { pickNext } from "../core/ambient.mjs";
 import { install, uninstall, isInstalled } from "../install/install.mjs";
+import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
 import { runStudy } from "./study.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
@@ -51,6 +52,9 @@ function cmdStatus() {
   stdout.write(`\n${accent("kanthropic")} — ambient kana while Claude thinks\n\n`);
   stdout.write(`  status line : ${installed ? green("installed") : dim("not installed")}`
     + `${installed ? "" : "  (run " + bold("kanthropic install") + ")"}\n`);
+  const hooks = hooksInstalled();
+  stdout.write(`  panel hooks : ${hooks ? green("installed") : dim("not installed")}`
+    + `${hooks ? "" : "  (run " + bold("kanthropic hooks-install") + ")"}\n`);
   stdout.write(`  default     : ${store.config.script}  `
     + dim(`(flip ${store.config.frontMs}ms / ${store.config.backMs}ms)`) + "\n");
 
@@ -101,6 +105,8 @@ function help() {
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
     + `  ${bold("study")} [--script k]   typed, scored drill — run at the idle prompt\n`
+    + `  ${bold("hooks-install")}        wire Claude hooks so the VS Code panel auto-opens/closes\n`
+    + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
     + `  ${bold("config")} [--front ms]  set default script / flip timing\n`
     + `  ${bold("preview")}              print a few sample ambient lines\n\n`
@@ -132,6 +138,20 @@ async function main() {
     case "study":
       await runStudy({ script: scriptFrom(flags, store.config.script), count: flags.count ? +flags.count : undefined });
       break;
+    case "hooks-install": {
+      const r = installHooks();
+      if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
+      stdout.write(`${green("✓ hooks installed.")} The VS Code panel will auto-open when Claude `
+        + `starts thinking and close when it's done.\n`);
+      stdout.write(dim("  Run the kanthropic VS Code extension, then start a new `claude` session.\n"));
+      break;
+    }
+    case "hooks-uninstall": {
+      const r = uninstallHooks();
+      if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
+      stdout.write(`${green("✓ hooks removed.")} ${dim("(Your other hooks, if any, were kept.)")}\n`);
+      break;
+    }
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
     case "preview": cmdPreview(flags); break;
