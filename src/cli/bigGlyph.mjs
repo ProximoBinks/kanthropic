@@ -101,6 +101,26 @@ function rasterize(subs, bb, W, H, SS = 2) {
   return cov.map((row) => row.map((v) => v >= thr));
 }
 
+/** Thicken strokes by `n` sub-pixels (8-neighbour dilation) so the fine curvy
+ *  strokes of complex/yōon glyphs stay connected instead of fragmenting. */
+function dilate(grid, n = 1) {
+  let g = grid;
+  for (let k = 0; k < n; k++) {
+    const H = g.length, W = g[0].length;
+    const out = Array.from({ length: H }, () => new Array(W).fill(false));
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (g[y][x] || g[y - 1]?.[x] || g[y + 1]?.[x] || g[y][x - 1] || g[y][x + 1]
+            || g[y - 1]?.[x - 1] || g[y - 1]?.[x + 1] || g[y + 1]?.[x - 1] || g[y + 1]?.[x + 1]) {
+          out[y][x] = true;
+        }
+      }
+    }
+    g = out;
+  }
+  return g;
+}
+
 const QUAD = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛", "▗", "▚", "▐", "▜", "▄", "▙", "▟", "█"];
 const DOT = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
 
@@ -128,7 +148,7 @@ const CFG = {
  * @param {"half"|"quad"|"braille"} [style]
  * @returns {string[] | null} art lines, or null if no font
  */
-export function renderGlyph(ch, rows = 8, maxCols = Infinity, style = "braille") {
+export function renderGlyph(ch, rows = 8, maxCols = Infinity, style = "braille", bold = 1) {
   const f = font();
   if (!f) return null;
   const cfg = CFG[style] || CFG.braille;
@@ -143,7 +163,10 @@ export function renderGlyph(ch, rows = 8, maxCols = Infinity, style = "braille")
     let cellsH = Math.max(2, rows);
     let cellsW = Math.max(1, Math.round(2 * cellsH * a));
     if (cellsW > maxCols) { cellsW = Math.max(1, maxCols); cellsH = Math.max(2, Math.round(cellsW / (2 * a))); }
-    const grid = rasterize(flatten(path.commands), bb, cellsW * cfg.sx, cellsH * cfg.sy, 2);
+    let grid = rasterize(flatten(path.commands), bb, cellsW * cfg.sx, cellsH * cfg.sy, 2);
+    // Wider glyphs (yōon) are rendered smaller per-stroke, so thicken more.
+    const extra = a > 1.4 ? 1 : 0;
+    if (bold + extra > 0) grid = dilate(grid, bold + extra);
     const lines = [];
     for (let cy = 0; cy < cellsH; cy++) {
       let line = "";
