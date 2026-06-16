@@ -16,11 +16,23 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+// Font fallback chain (research Layer 5): prefer an explicit override, then
+// purpose-built 1:2 programming-JP fonts, then Noto, then OS defaults. We only
+// need the glyph OUTLINES (we rasterize them), so any kana-covering TTF/OTF
+// works; .ttc collections are tried last since opentype.js support is partial.
 const CANDIDATES = [
   process.env.KANTHROPIC_FONT,
+  // user-installed favourites from the research
+  join(homedir(), "Library/Fonts/UDEVGothic-Regular.ttf"),
+  join(homedir(), "Library/Fonts/PlemolJP-Regular.ttf"),
+  join(homedir(), "Library/Fonts/Migu-1M-regular.ttf"),
   join(homedir(), "Library/Fonts/NotoSansJP-VariableFont_wght.ttf"),
+  // common system locations (macOS / Linux)
   "/System/Library/Fonts/Supplemental/NotoSansJP-Regular.otf",
   "/Library/Fonts/NotoSansJP-Regular.otf",
+  "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+  "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+  "/System/Library/Fonts/Hiragino Sans GB.ttc",
 ].filter(Boolean);
 
 export const STYLES = ["half", "quad", "braille"];

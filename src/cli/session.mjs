@@ -16,7 +16,7 @@
  */
 import { spawnSync, execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { stdout } from "node:process";
+import { stdout, env } from "node:process";
 import { KANTHROPIC_DIR, KANA_PANE_PATH, TMUX_SESSION } from "../core/paths.mjs";
 
 function tmuxAvailable() {
@@ -27,6 +27,31 @@ function tmuxAvailable() {
 function sessionExists() {
   try { execFileSync("tmux", ["has-session", "-t", TMUX_SESSION], { stdio: "ignore" }); return true; }
   catch { return false; }
+}
+
+/**
+ * Terminal-correctness hardening for the session (research Layer 3 — tmux is
+ * its own width/term layer between the program and the outer terminal):
+ *   - a consistent terminfo (`tmux-256color`) both sides understand;
+ *   - truecolor passthrough so the glyph accent renders cleanly;
+ *   - UTF-8 locale propagated into the session so block-art and any kana text
+ *     can't be mangled by a non-UTF-8 LANG.
+ * We don't print kana as text (we rasterize to width-1 block elements, which
+ * dodges the East-Asian-Width problem entirely), so this is belt-and-braces —
+ * but cheap and it makes colour + any literal kana (the status line) robust.
+ */
+function applyTerminalConfig(target = TMUX_SESSION) {
+  const cmds = [
+    ["set-option", "-t", target, "default-terminal", "tmux-256color"],
+    ["set-option", "-t", target, "-ga", "terminal-overrides", ",*256col*:Tc"],
+  ];
+  // Propagate a UTF-8 locale to programs started in the session.
+  const lang = env.LC_ALL || env.LANG || "en_US.UTF-8";
+  cmds.push(["set-environment", "-t", target, "LANG", lang]);
+  cmds.push(["set-environment", "-t", target, "LC_ALL", lang]);
+  for (const args of cmds) {
+    try { execFileSync("tmux", args, { stdio: "ignore" }); } catch { /* best-effort */ }
+  }
 }
 
 /** A muted dark/violet status bar instead of tmux's blinding default green. */
@@ -62,6 +87,7 @@ export function runSession(claudeArgs = []) {
     // hooks open/close the kana pane below it.
     const claudeCmd = ["claude", ...claudeArgs].join(" ");
     execFileSync("tmux", ["new-session", "-d", "-s", TMUX_SESSION, "-n", "kanthropic"]);
+    applyTerminalConfig(); // set terminfo/locale BEFORE launching claude
     applyTheme();
     execFileSync("tmux", ["send-keys", "-t", `${TMUX_SESSION}:0`, claudeCmd, "Enter"]);
     stdout.write(`\x1b[38;5;176m✓ kanthropic session ready.\x1b[0m  (\`${claudeCmd}\`)  Type a prompt — a kana `
