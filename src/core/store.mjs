@@ -25,7 +25,7 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { KANTHROPIC_DIR, PROGRESS_PATH } from "./paths.mjs";
 
-export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, glyphStyle: "braille" };
+export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, glyphStyle: "quad" };
 
 /** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any }} */
 export function emptyStore() {
