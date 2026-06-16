@@ -106,7 +106,7 @@ function help() {
   stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Claude Code thinks\n\n`
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
-    + `  ${bold("session")} [--script k] seamless tmux layout: Claude + kana, focus auto-switches\n`
+    + `  ${bold("session")} [claude args] seamless tmux layout (forwards args, e.g. --resume, to claude)\n`
     + `  ${bold("drill")} [--script k]   endless kana input box for a side pane (reacts to Claude)\n`
     + `  ${bold("study")} [--script k]   typed, scored session — run at the idle prompt\n`
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
@@ -146,7 +146,7 @@ async function main() {
       await runDrill({ script: scriptFrom(flags, store.config.script) });
       break;
     case "session":
-      runSession();
+      runSession(rest); // forward args (e.g. --resume, --continue) to claude
       break;
     case "hooks-install": {
       const r = installHooks();

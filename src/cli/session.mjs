@@ -29,7 +29,8 @@ function sessionExists() {
   catch { return false; }
 }
 
-export function runSession() {
+/** @param {string[]} [claudeArgs] forwarded to `claude` (e.g. ["--resume"]). */
+export function runSession(claudeArgs = []) {
   if (!tmuxAvailable()) {
     stdout.write("\x1b[31m✗ tmux is not installed.\x1b[0m  Install it with: brew install tmux\n");
     process.exit(1);
@@ -39,14 +40,21 @@ export function runSession() {
     mkdirSync(KANTHROPIC_DIR, { recursive: true });
     writeFileSync(KANA_PANE_PATH, "", "utf8"); // clear any stale pane id
 
-    // One pane running Claude; the hooks open/close the kana pane below it.
+    // One pane running Claude (with any pass-through args like --resume); the
+    // hooks open/close the kana pane below it.
+    const claudeCmd = ["claude", ...claudeArgs].join(" ");
     execFileSync("tmux", ["new-session", "-d", "-s", TMUX_SESSION, "-n", "kanthropic"]);
-    execFileSync("tmux", ["send-keys", "-t", `${TMUX_SESSION}:0`, "claude", "Enter"]);
-    stdout.write("\x1b[38;5;176m✓ kanthropic session ready.\x1b[0m  Type a prompt in Claude — a kana "
+    execFileSync("tmux", ["send-keys", "-t", `${TMUX_SESSION}:0`, claudeCmd, "Enter"]);
+    stdout.write(`\x1b[38;5;176m✓ kanthropic session ready.\x1b[0m  (\`${claudeCmd}\`)  Type a prompt — a kana `
       + "box opens below while it thinks, and closes when it's done.\n"
       + "\x1b[2m  (detach: Ctrl-b then d)\x1b[0m\n");
   } else {
-    stdout.write("\x1b[2mAttaching to existing kanthropic session…\x1b[0m\n");
+    if (claudeArgs.length) {
+      stdout.write("\x1b[2mA kanthropic session already exists — attaching (args ignored). "
+        + "To resume there, run `claude --resume` inside the Claude pane.\x1b[0m\n");
+    } else {
+      stdout.write("\x1b[2mAttaching to existing kanthropic session…\x1b[0m\n");
+    }
   }
 
   const r = spawnSync("tmux", ["attach", "-t", TMUX_SESSION], { stdio: "inherit" });
