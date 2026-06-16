@@ -21,7 +21,7 @@ import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
 import { renderGlyph, STYLES } from "./bigGlyph.mjs";
-import { glyphImage, imagesEnabled } from "./glyphImage.mjs";
+import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -111,21 +111,26 @@ function cmdGlyphTest(rest) {
   stdout.write(dim(`\nSet one with:  kanthropic config --style ${STYLES.join("|")}\n`));
 }
 
-function cmdImageTest(rest) {
+async function cmdImageTest(rest) {
   const ch = rest.find((a) => !a.startsWith("--")) || "ば";
-  if (process.env.TMUX) {
-    stdout.write(`\n${dim("⚠ You're inside tmux — images don't survive tmux redraws, so the")}\n`
-      + `${dim("  session pane always uses block-art. Run this in a plain terminal window.")}\n`);
+  const renderer = pickRenderer("on"); // force an image attempt for the test
+  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} via ${bold(renderer)}:\n\n`);
+  if (renderer === "sixel") {
+    const cellPx = (await probeCellHeight()) || 20;
+    const sx = glyphSixel(ch, 10 * cellPx);
+    if (!sx) { stdout.write(dim("(no Japanese font found)\n")); return; }
+    stdout.write(sx.sixel + "\n\n");
+  } else {
+    const img = glyphImage(ch, 10);
+    if (!img) { stdout.write(dim("(no Japanese font found)\n")); return; }
+    stdout.write(img.escape + "\n\n");
   }
-  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} as a real image (iTerm2 protocol):\n\n`);
-  const img = glyphImage(ch, 10);
-  if (!img) { stdout.write(dim("(no Japanese font found to rasterize)\n")); return; }
-  stdout.write(img.escape + "\n\n");
-  stdout.write(`If you see a crisp ${bold(ch)} above, images work — turn them on with:\n`);
-  stdout.write(`  ${bold("kanthropic config --image on")}\n`);
-  stdout.write(dim(`\nIf you see garbled text instead, your terminal isn't showing inline images.\n`
-    + `  • VS Code / Antigravity: enable the setting "terminal.integrated.enableImages", reload.\n`
-    + `  • Then fall back any time with:  kanthropic config --image off  (uses block glyphs)\n`));
+  stdout.write(`If you see a crisp ${bold(ch)} above, images work here — turn them on with:\n`);
+  stdout.write(`  ${bold("kanthropic config --image on")}  ${dim("(or leave --image auto)")}\n`);
+  stdout.write(dim(`\nIf you see garbled text instead:\n`
+    + `  • VS Code / Antigravity: enable "terminal.integrated.enableImages", reload.\n`
+    + `  • Inside tmux you need a sixel-enabled tmux (yours is); the session uses sixel.\n`
+    + `  • Fall back any time with:  kanthropic config --image off\n`));
 }
 
 function cmdPreview(flags) {
@@ -207,7 +212,7 @@ async function main() {
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
     case "glyphtest": cmdGlyphTest(rest); break;
-    case "imagetest": cmdImageTest(rest); break;
+    case "imagetest": await cmdImageTest(rest); break;
     case "preview": cmdPreview(flags); break;
     case undefined:
     case "help":

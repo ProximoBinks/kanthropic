@@ -9,6 +9,7 @@
  * wraps the escape for tmux passthrough when inside a session.
  */
 import zlib from "node:zlib";
+import { execFileSync } from "node:child_process";
 import { getFont, flatten } from "./bigGlyph.mjs";
 
 // ── minimal PNG encoder (RGBA, no dependencies) ────────────────────────────
@@ -116,6 +117,138 @@ export function glyphImage(ch, rows, color = ACCENT) {
   } catch {
     return null;
   }
+}
+
+// ── SIXEL encoder ──────────────────────────────────────────────────────────
+// tmux built with --enable-sixel renders sixel into its OWN grid, so it
+// survives redraws (unlike iTerm2 passthrough). We emit anti-aliased violet on
+// a transparent background (P2=1), using a few shade levels for smooth edges.
+function sixelEncode(grid, W, H, fg = ACCENT, bg = [20, 20, 28], levels = 6) {
+  let out = "\x1bP0;1;0q" + `"1;1;${W};${H}`;
+  for (let i = 0; i < levels; i++) {
+    const t = (i + 1) / levels;
+    const r = Math.round((bg[0] + (fg[0] - bg[0]) * t) / 255 * 100);
+    const g = Math.round((bg[1] + (fg[1] - bg[1]) * t) / 255 * 100);
+    const b = Math.round((bg[2] + (fg[2] - bg[2]) * t) / 255 * 100);
+    out += `#${i};2;${r};${g};${b}`;
+  }
+  for (let band = 0; band * 6 < H; band++) {
+    const y0 = band * 6;
+    for (let lvl = 0; lvl < levels; lvl++) {
+      let line = `#${lvl}`;
+      let any = false, runCh = -1, runLen = 0;
+      const flush = () => {
+        if (runLen > 0) {
+          line += runLen > 3 ? `!${runLen}${String.fromCharCode(runCh)}`
+                             : String.fromCharCode(runCh).repeat(runLen);
+        }
+        runLen = 0;
+      };
+      for (let x = 0; x < W; x++) {
+        let bits = 0;
+        for (let dy = 0; dy < 6; dy++) {
+          const y = y0 + dy;
+          if (y >= H) break;
+          const c = grid[y][x];
+          const q = c <= 0 ? 0 : Math.min(levels, Math.ceil(c * levels));
+          if (q === lvl + 1) bits |= (1 << dy);
+        }
+        if (bits) any = true;
+        const ch = 0x3f + bits;
+        if (ch === runCh) runLen++; else { flush(); runCh = ch; runLen = 1; }
+      }
+      flush();
+      if (any) out += line + "$";
+    }
+    out += "-";
+  }
+  return out + "\x1b\\";
+}
+
+/**
+ * Build a sixel image for `ch` at ~`heightPx` pixels tall.
+ * @returns {{ sixel: string, widthPx: number, heightPx: number } | null}
+ */
+export function glyphSixel(ch, heightPx, color = ACCENT) {
+  const f = getFont();
+  if (!f) return null;
+  try {
+    const path = f.getPath(ch, 0, 0, 100);
+    const bb = path.getBoundingBox();
+    const gw = bb.x2 - bb.x1, gh = bb.y2 - bb.y1;
+    if (!(gw > 0 && gh > 0)) return null;
+    const H = Math.max(6, Math.round(heightPx / 6) * 6);
+    const W = Math.max(2, Math.round(H * (gw / gh)));
+    const pad = Math.round(H * 0.06);
+    const cov = coverage(flatten(path.commands), bb, W, H, 2);
+    const FW = W + 2 * pad, FH = Math.ceil((H + 2 * pad) / 6) * 6;
+    const grid = Array.from({ length: FH }, () => new Float32Array(FW));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) grid[y + pad][x + pad] = cov[y][x];
+    return { sixel: sixelEncode(grid, FW, FH, color), widthPx: FW, heightPx: FH };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe the terminal for its cell pixel height (so a sixel can be sized to N
+ * rows). Queries text-area pixels via CSI 14 t and divides by the row count.
+ * Resolves to a pixel height, or 0 if unavailable. Never hangs (short timeout).
+ * @returns {Promise<number>}
+ */
+export function probeCellHeight(timeoutMs = 200) {
+  return new Promise((resolve) => {
+    const { stdin, stdout } = process;
+    if (!stdin.isTTY || !stdout.isTTY) return resolve(0);
+    let buf = "";
+    const finish = (v) => {
+      clearTimeout(timer);
+      try { stdin.setRawMode(false); } catch { /* ignore */ }
+      stdin.off("data", onData);
+      stdin.pause();
+      resolve(v);
+    };
+    const onData = (d) => {
+      buf += d.toString();
+      const m = /\x1b\[4;(\d+);(\d+)t/.exec(buf);
+      if (m) {
+        const px = parseInt(m[1], 10);
+        finish(stdout.rows ? Math.round(px / stdout.rows) : 0);
+      }
+    };
+    try { stdin.setRawMode(true); } catch { return resolve(0); }
+    stdin.resume();
+    stdin.on("data", onData);
+    stdout.write("\x1b[14t");
+    const timer = setTimeout(() => finish(0), timeoutMs);
+  });
+}
+
+let _tmuxSixel = null;
+/** Whether the current tmux client supports sixel (so tmux will store it). */
+function tmuxHasSixel() {
+  if (_tmuxSixel !== null) return _tmuxSixel;
+  try {
+    const f = execFileSync("tmux", ["display-message", "-p", "#{client_termfeatures}"],
+      { encoding: "utf8" });
+    _tmuxSixel = /sixel/i.test(f);
+  } catch { _tmuxSixel = false; }
+  return _tmuxSixel;
+}
+
+/**
+ * Pick the renderer for the current terminal: a real sixel image inside a
+ * sixel-capable tmux, a real iTerm2 image in a capable standalone terminal, or
+ * block-art otherwise.
+ * @param {"on"|"off"|"auto"} mode @returns {"sixel"|"iterm"|"blocks"}
+ */
+export function pickRenderer(mode) {
+  if (mode === "off") return "blocks";
+  if (process.env.TMUX) return tmuxHasSixel() ? "sixel" : "blocks";
+  if (mode === "on") return "iterm";
+  if (!process.stdout.isTTY) return "blocks";
+  const tp = process.env.TERM_PROGRAM || "";
+  return ["vscode", "iTerm.app", "WezTerm", "rio", "mintty"].includes(tp) ? "iterm" : "blocks";
 }
 
 /**

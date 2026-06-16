@@ -15,7 +15,7 @@ import { pickNext } from "../core/ambient.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 import { bigGlyph } from "./bigGlyph.mjs";
-import { glyphImage, imagesEnabled } from "./glyphImage.mjs";
+import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -45,8 +45,10 @@ function center(lines, cols) {
 /** @param {{ script: import("../data/kana.mjs").Script }} opts */
 export async function runDrill(opts) {
   const script = opts.script;
+  const renderer = pickRenderer(load().config.image || "auto");
+  // Sixel needs the cell pixel height to size to N rows; probe once.
+  const cellPx = renderer === "sixel" ? (await probeCellHeight()) || 20 : 20;
   const reader = makeLineReader();
-  const useImage = imagesEnabled(load().config.image || "auto");
   let lastGlyph = null;
   let correct = 0, seen = 0;
   let lastState = readSessionState();
@@ -80,15 +82,35 @@ export async function runDrill(opts) {
       stdout.write(CLEAR);
       stdout.write(`${dot} ${c.dim(`${script} · ${correct}/${seen}`)}\n`);
 
-      const img = useImage ? glyphImage(next.glyph, renderRows) : null;
-      if (img) {
-        const topPad = Math.max(0, Math.floor((availRows - renderRows) / 2));
-        const botPad = Math.max(0, availRows - renderRows - topPad);
-        const padCols = Math.max(0, Math.floor((cols - img.widthCells) / 2));
-        stdout.write("\n".repeat(topPad));
-        stdout.write(" ".repeat(padCols) + img.escape + "\n");
-        stdout.write("\n".repeat(botPad));
-      } else {
+      // Sixel image (works inside sixel-capable tmux), iTerm2 image (standalone),
+      // or block-art fallback.
+      let drew = false;
+      if (renderer === "sixel") {
+        const sx = glyphSixel(next.glyph, renderRows * cellPx);
+        if (sx) {
+          const heightCells = Math.max(1, Math.round(sx.heightPx / cellPx));
+          const widthCells = Math.max(1, Math.round(sx.widthPx / (cellPx / 2)));
+          const topPad = Math.max(0, Math.floor((availRows - heightCells) / 2));
+          const botPad = Math.max(0, availRows - heightCells - topPad);
+          const padCols = Math.max(0, Math.floor((cols - widthCells) / 2));
+          stdout.write("\n".repeat(topPad));
+          stdout.write(" ".repeat(padCols) + sx.sixel + "\n");
+          stdout.write("\n".repeat(botPad));
+          drew = true;
+        }
+      } else if (renderer === "iterm") {
+        const img = glyphImage(next.glyph, renderRows);
+        if (img) {
+          const topPad = Math.max(0, Math.floor((availRows - renderRows) / 2));
+          const botPad = Math.max(0, availRows - renderRows - topPad);
+          const padCols = Math.max(0, Math.floor((cols - img.widthCells) / 2));
+          stdout.write("\n".repeat(topPad));
+          stdout.write(" ".repeat(padCols) + img.escape + "\n");
+          stdout.write("\n".repeat(botPad));
+          drew = true;
+        }
+      }
+      if (!drew) {
         const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
         const artLines = art || [c.bold(next.glyph)];
         const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
