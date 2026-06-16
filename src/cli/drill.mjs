@@ -122,6 +122,9 @@ export async function runDrill(opts) {
       // absolute move is done AFTER the botPad newlines (which commit the sixel
       // into tmux's grid) — moving before that commit makes tmux drop the image.
       stdout.write(`\x1b[${Math.max(2, rows - 1)};1H\x1b[?25h`); // move to prompt + show cursor
+      // Drop any Enter spammed during the previous grade/sleep so it can't
+      // auto-answer the next few cards (interactive only — keep piped input).
+      if (process.stdin.isTTY) reader.flush();
       // Status (dot + script + score) lives on the prompt line now.
       const status = `${script} ${correct}/${seen}`;
       const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset

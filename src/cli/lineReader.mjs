@@ -35,6 +35,9 @@ export function makeLineReader() {
       if (closed) return Promise.resolve(null);
       return new Promise((res) => waiters.push(res));
     },
+    /** Discard input buffered while nothing was awaiting (e.g. Enter spammed
+     *  during the grade/sleep between cards), so it can't race ahead. */
+    flush() { queue.length = 0; },
     close() { rl.close(); },
   };
 }
