@@ -1,18 +1,20 @@
 /**
  * Reversibly wire Claude Code lifecycle hooks into ~/.claude/settings.json so
- * the kana drill reacts to Claude, AND — when you run inside the `kanthropic
- * session` tmux layout — your keyboard focus auto-switches between the Claude
- * pane and the kana pane.
+ * that — inside the `kanthropic session` tmux layout — a kana drill pane
+ * OPENS below Claude while it's thinking and CLOSES when it's done.
  *
- *   UserPromptSubmit → write {"state":"thinking"} + focus the KANA pane
- *   Stop             → write {"state":"idle"}     + focus the CLAUDE pane
+ *   UserPromptSubmit → on-thinking.sh : write state + split a kana pane below
+ *   Stop             → on-idle.sh     : write state + kill the kana pane
  *
- * The focus switch only runs when $TMUX is set (you're inside tmux) and the
- * recorded pane file exists, so the hooks are a harmless no-op for plain
- * `claude` sessions. Each command is instant, exits 0, and never affects
- * Claude. The MARKER tags our entries for clean removal.
+ * The heavy lifting lives in two small scripts in ~/.kanthropic so settings.json
+ * stays a clean one-liner. Both are guarded: the pane open/close only happens
+ * inside a tmux session named "kanthropic", so plain `claude` sessions (and
+ * other tmux work) are completely unaffected. Each hook command carries the
+ * MARKER so uninstall removes exactly our entries, leaving the user's own hooks
+ * untouched.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import {
   parseable, readTopLevel, upsertTopLevel, removeTopLevel,
 } from "./jsonc.mjs";
@@ -21,27 +23,50 @@ import {
 } from "./paths.mjs";
 
 const MARKER = "kanthropic-panel";
+const ON_THINKING = join(KANTHROPIC_DIR, "on-thinking.sh");
+const ON_IDLE = join(KANTHROPIC_DIR, "on-idle.sh");
+
+// Height (rows) of the kana pane that opens below Claude.
+const PANE_ROWS = 12;
+
+// Open the kana pane below Claude. Guarded to the "kanthropic" tmux session so
+// it never disturbs other sessions. Kills any stale kana pane first so prompts
+// never stack panes, then records the new pane id for on-idle to close.
+const THINKING_SCRIPT = `#!/bin/sh
+mkdir -p "$HOME/.kanthropic"
+printf '{"state":"thinking","at":%s}' "$(date +%s)" > "$HOME/.kanthropic/session-state.json"
+[ -n "$TMUX_PANE" ] || exit 0
+[ "$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)" = "kanthropic" ] || exit 0
+OLD=$(cat "$HOME/.kanthropic/kana-pane" 2>/dev/null)
+[ -n "$OLD" ] && tmux kill-pane -t "$OLD" 2>/dev/null
+NEW=$(tmux split-window -v -l ${PANE_ROWS} -P -F '#{pane_id}' -t "$TMUX_PANE" 'kanthropic drill' 2>/dev/null)
+[ -n "$NEW" ] && printf '%s' "$NEW" > "$HOME/.kanthropic/kana-pane"
+exit 0
+`;
+
+// Close the kana pane (focus falls back to Claude automatically).
+const IDLE_SCRIPT = `#!/bin/sh
+mkdir -p "$HOME/.kanthropic"
+printf '{"state":"idle","at":%s}' "$(date +%s)" > "$HOME/.kanthropic/session-state.json"
+OLD=$(cat "$HOME/.kanthropic/kana-pane" 2>/dev/null)
+[ -n "$OLD" ] && tmux kill-pane -t "$OLD" 2>/dev/null
+: > "$HOME/.kanthropic/kana-pane"
+exit 0
+`;
 
 /** @param {"thinking"|"idle"} state @returns {string} */
-function stateCommand(state) {
-  // POSIX sh: write the state file, then (only inside tmux) switch focus to the
-  // recorded pane. Always exits 0 so it never delays or fails Claude.
-  const paneFile = state === "thinking" ? "kana-pane" : "claude-pane";
-  return `sh -c 'mkdir -p "$HOME/.kanthropic"; `
-    + `printf "{\\"state\\":\\"${state}\\",\\"at\\":%s}" "$(date +%s)" > "$HOME/.kanthropic/session-state.json"; `
-    + `if [ -n "$TMUX" ]; then P=$(cat "$HOME/.kanthropic/${paneFile}" 2>/dev/null); `
-    + `[ -n "$P" ] && tmux select-pane -t "$P" 2>/dev/null; fi; `
-    + `exit 0' # ${MARKER}`;
+function hookCommand(state) {
+  const script = state === "thinking" ? ON_THINKING : ON_IDLE;
+  return `sh ${JSON.stringify(script)} # ${MARKER}`;
 }
 
 /** A single Claude hook entry. @param {"thinking"|"idle"} state */
 function hookEntry(state) {
-  return { hooks: [{ type: "command", command: stateCommand(state) }] };
+  return { hooks: [{ type: "command", command: hookCommand(state) }] };
 }
 
-/** Serialize a value for a depth-1 key: pretty JSON, with every line after the
- *  first indented 2 spaces so the block nests correctly under the key (the
- *  closing brace lines up with the key, not column 0). @param {unknown} obj */
+/** Serialize a value for a depth-1 key: pretty JSON, every line after the first
+ *  indented 2 spaces so the block nests correctly under the key. */
 function pretty(obj) {
   return JSON.stringify(obj, null, 2)
     .split("\n").map((line, i) => (i === 0 ? line : "  " + line)).join("\n");
@@ -70,8 +95,12 @@ export function installHooks() {
       writeFileSync(CLAUDE_SETTINGS_BACKUP_PATH, existed ? src : ABSENT_SENTINEL, "utf8");
     }
 
-    const hooks = (readTopLevel(src, "hooks") && typeof readTopLevel(src, "hooks") === "object")
-      ? { ...readTopLevel(src, "hooks") } : {};
+    // The scripts the hooks call (rewritten each install so upgrades land).
+    writeFileSync(ON_THINKING, THINKING_SCRIPT, "utf8");
+    writeFileSync(ON_IDLE, IDLE_SCRIPT, "utf8");
+
+    const cur = readTopLevel(src, "hooks");
+    const hooks = (cur && typeof cur === "object") ? { ...cur } : {};
     hooks.UserPromptSubmit = [...withoutOurs(hooks.UserPromptSubmit), hookEntry("thinking")];
     hooks.Stop = [...withoutOurs(hooks.Stop), hookEntry("idle")];
 
@@ -86,6 +115,7 @@ export function installHooks() {
 /** @returns {{ ok: boolean, reason?: string }} */
 export function uninstallHooks() {
   try {
+    for (const p of [ON_THINKING, ON_IDLE]) if (existsSync(p)) rmSync(p);
     if (!existsSync(CLAUDE_SETTINGS_PATH)) return { ok: true };
     const src = readFileSync(CLAUDE_SETTINGS_PATH, "utf8");
     if (!parseable(src)) return { ok: false, reason: "settings.json not parseable — left untouched." };

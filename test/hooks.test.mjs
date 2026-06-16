@@ -31,13 +31,17 @@ describe("Claude hook wiring", () => {
     const after = readFileSync(settings(home), "utf8");
     expect(parseable(after)).toBe(true);
     const hooks = readTopLevel(after, "hooks");
-    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("thinking");
-    expect(hooks.Stop[0].hooks[0].command).toContain("idle");
-    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("session-state.json");
+    expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("on-thinking.sh");
+    expect(hooks.Stop[0].hooks[0].command).toContain("on-idle.sh");
     expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("kanthropic-panel");
+    // helper scripts written with the open/close logic
+    expect(existsSync(join(home, ".kanthropic", "on-thinking.sh"))).toBe(true);
+    expect(readFileSync(join(home, ".kanthropic", "on-thinking.sh"), "utf8")).toContain("split-window");
+    expect(readFileSync(join(home, ".kanthropic", "on-idle.sh"), "utf8")).toContain("kill-pane");
 
     run(home, "hooks-uninstall");
     expect(readFileSync(settings(home), "utf8")).toBe(orig);
+    expect(existsSync(join(home, ".kanthropic", "on-thinking.sh"))).toBe(false); // scripts removed too
   });
 
   it("preserves a pre-existing user hook through install + uninstall", () => {

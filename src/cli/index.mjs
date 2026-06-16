@@ -146,7 +146,7 @@ async function main() {
       await runDrill({ script: scriptFrom(flags, store.config.script) });
       break;
     case "session":
-      runSession({ script: scriptFrom(flags, store.config.script) });
+      runSession();
       break;
     case "hooks-install": {
       const r = installHooks();
