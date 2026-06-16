@@ -29,6 +29,24 @@ function sessionExists() {
   catch { return false; }
 }
 
+/** A muted dark/violet status bar instead of tmux's blinding default green. */
+export function applyTheme(target = TMUX_SESSION) {
+  const opts = [
+    ["status-style", "bg=colour236,fg=colour245"],
+    ["window-status-current-style", "fg=colour176,bg=colour236,bold"],
+    ["window-status-style", "fg=colour244,bg=colour236"],
+    ["status-left-style", "fg=colour176,bg=colour236"],
+    ["status-right-style", "fg=colour244,bg=colour236"],
+    ["message-style", "fg=colour231,bg=colour54"],
+    ["pane-active-border-style", "fg=colour176"],
+    ["pane-border-style", "fg=colour238"],
+  ];
+  for (const [k, v] of opts) {
+    try { execFileSync("tmux", ["set-option", "-t", target, k, v], { stdio: "ignore" }); }
+    catch { /* best-effort theming */ }
+  }
+}
+
 /** @param {string[]} [claudeArgs] forwarded to `claude` (e.g. ["--resume"]). */
 export function runSession(claudeArgs = []) {
   if (!tmuxAvailable()) {
@@ -44,6 +62,7 @@ export function runSession(claudeArgs = []) {
     // hooks open/close the kana pane below it.
     const claudeCmd = ["claude", ...claudeArgs].join(" ");
     execFileSync("tmux", ["new-session", "-d", "-s", TMUX_SESSION, "-n", "kanthropic"]);
+    applyTheme();
     execFileSync("tmux", ["send-keys", "-t", `${TMUX_SESSION}:0`, claudeCmd, "Enter"]);
     stdout.write(`\x1b[38;5;176m✓ kanthropic session ready.\x1b[0m  (\`${claudeCmd}\`)  Type a prompt — a kana `
       + "box opens below while it thinks, and closes when it's done.\n"

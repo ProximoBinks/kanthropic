@@ -126,10 +126,10 @@ async function main() {
     case "install": {
       const r = install();
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
-      stdout.write(`${green("✓ installed.")} A kana card now shows in your Claude Code `
-        + `status line while it's thinking.\n`);
-      if (r.chained) stdout.write(dim("  Your existing status line was preserved and stacks below the card.\n"));
-      stdout.write(dim("  Start a new `claude` session to see it. Drill anytime with `kanthropic study`.\n"));
+      stdout.write(`${green("✓ installed.")} Your kana progress now shows in the Claude Code `
+        + `status line and updates as you drill.\n`);
+      if (r.chained) stdout.write(dim("  Your existing status line was preserved and stacks below.\n"));
+      stdout.write(dim("  Start a new `claude` session (or `kanthropic session`) to see it.\n"));
       break;
     }
     case "uninstall": {
