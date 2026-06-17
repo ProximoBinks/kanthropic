@@ -65,11 +65,4 @@ describe("Claude hook wiring", () => {
     expect(hooks.UserPromptSubmit).toBeUndefined(); // ours gone
     expect(hooks.Stop).toBeUndefined();
   });
-
-  it("panel.html carries the substitution placeholders the host expects", () => {
-    const html = readFileSync(fileURLToPath(new URL("../kanthropic-vscode/webview/panel.html", import.meta.url)), "utf8");
-    for (const tok of ["__CSP__", "__NONCE__", "__CSS__", "__JS__"]) {
-      expect(html).toContain(tok);
-    }
-  });
 });

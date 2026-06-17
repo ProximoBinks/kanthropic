@@ -14,7 +14,12 @@
 import opentype from "opentype.js";
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The kana font bundled with the package (subset of Noto Sans JP, OFL) — used
+// first so kanthropic renders glyphs on any machine without a system JP font.
+const BUNDLED_FONT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "assets", "fonts", "kana.ttf");
 
 // Font fallback chain (research Layer 5): prefer an explicit override, then
 // purpose-built 1:2 programming-JP fonts, then Noto, then OS defaults. We only
@@ -22,6 +27,7 @@ import { join } from "node:path";
 // works; .ttc collections are tried last since opentype.js support is partial.
 const CANDIDATES = [
   process.env.KANTHROPIC_FONT,
+  BUNDLED_FONT, // ships with kanthropic → works with no system font installed
   // user-installed favourites from the research
   join(homedir(), "Library/Fonts/UDEVGothic-Regular.ttf"),
   join(homedir(), "Library/Fonts/PlemolJP-Regular.ttf"),

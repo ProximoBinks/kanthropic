@@ -87,9 +87,12 @@ function cmdConfig(flags) {
   if (flags.back && !isNaN(+flags.back)) store.config.backMs = +flags.back;
   if (typeof flags.style === "string" && STYLES.includes(flags.style)) store.config.glyphStyle = flags.style;
   if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) store.config.image = flags.image;
+  if (flags.advance === "on" || flags.advance === true) store.config.autoAdvance = true;
+  if (flags.advance === "off") store.config.autoAdvance = false;
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
     + `image=${store.config.image} style=${store.config.glyphStyle} `
+    + `advance=${store.config.autoAdvance ? "on" : "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
 }
 
@@ -190,7 +193,9 @@ async function main() {
       await runStudy({ script: scriptFrom(flags, store.config.script), count: flags.count ? +flags.count : undefined });
       break;
     case "drill":
-      await runDrill({ script: scriptFrom(flags, store.config.script) });
+      // Pass a script only when --script is explicit; otherwise let the drill
+      // resolve it (auto-advance hiragana → katakana once hiragana is mastered).
+      await runDrill({ script: flags.script ? scriptFrom(flags, "hiragana") : undefined });
       break;
     case "session": {
       // `session [name] [claude args]` — a leading non-flag token names the

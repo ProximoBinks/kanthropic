@@ -37,11 +37,12 @@ status line.
   ```
   (Without sixel-tmux the session still works — it just falls back to block-art glyphs.)
 - **Claude Code** CLI (`claude`)
-- **A Japanese font** on disk so glyphs can be rasterized. macOS usually has one; if not,
-  install [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) (or point
-  `KANTHROPIC_FONT=/path/to/font.ttf`). Without a font it falls back to the plain terminal character.
 - An **image-capable terminal** for the crisp rendering (see *Enable images* below). Anything
   else degrades to block-art automatically.
+
+A kana font (a subset of [Noto Sans JP](https://github.com/notofonts/noto-cjk), OFL) is
+**bundled** in `assets/fonts/`, so glyphs render with no system font needed. Point
+`KANTHROPIC_FONT=/path/to/font.ttf` to use a different one.
 
 ## Install
 
@@ -130,9 +131,16 @@ kanthropic drill --script katakana
 kanthropic status                       # install state + your progress
 kanthropic config --script katakana     # default script
 kanthropic config --image on|auto|off   # image rendering mode
+kanthropic config --advance off         # disable auto-advance (see below)
 kanthropic glyphtest みょ                # compare block-art styles
 kanthropic imagetest ば                  # test image rendering here
 ```
+
+**Hiragana &amp; katakana** are both fully supported (all 104 characters each, with separate
+progress). By default the drill starts on hiragana and **auto-advances to katakana** once
+you've mastered every hiragana (each graduated to FSRS *Review*) — you'll get a 🎉 and it
+switches. Turn that off with `kanthropic config --advance off`, or jump straight in with
+`--script katakana`.
 
 ## Commands
 

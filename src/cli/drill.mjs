@@ -8,7 +8,7 @@
  * Deliberately minimal: two short lines per card, no full-screen redraw.
  */
 import { stdout } from "node:process";
-import { checkAnswer, entryByGlyph } from "../data/kana.mjs";
+import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
@@ -38,10 +38,33 @@ function center(lines, cols) {
   return lines.map((l) => " ".repeat(Math.max(0, Math.floor((cols - [...l].length) / 2))) + l).join("\n");
 }
 
-/** @param {{ script: import("../data/kana.mjs").Script }} opts */
-export async function runDrill(opts) {
-  const script = opts.script;
-  const renderer = pickRenderer(load().config.image || "auto");
+/** A script is "mastered" once every glyph has graduated past learning
+ *  (FSRS state ≥ 2 = Review). @param {Record<string, any>} cards */
+export function scriptMastered(cards, script) {
+  return ENTRIES.every((e) => (cards[glyphOf(e, script)]?.state ?? 0) >= 2);
+}
+
+/** The script to actually drill. An explicit `--script` always wins; otherwise
+ *  auto-advance hiragana → katakana once hiragana is fully mastered. */
+export function resolveScript(store, explicit) {
+  if (explicit) return explicit;
+  const s = store.config.script;
+  if (store.config.autoAdvance === false) return s;
+  if (s === "hiragana" && scriptMastered(store.cards, "hiragana")
+      && !scriptMastered(store.cards, "katakana")) return "katakana";
+  return s;
+}
+
+/** @param {{ script?: import("../data/kana.mjs").Script }} [opts] */
+export async function runDrill(opts = {}) {
+  const store0 = load();
+  const prev = store0.config.script;
+  const script = resolveScript(store0, opts.script);
+  // Persist + announce a one-time auto-advance (only fires on the transition).
+  const advancedFrom = (!opts.script && script !== prev) ? prev : null;
+  if (advancedFrom) { store0.config.script = script; save(store0); }
+
+  const renderer = pickRenderer(store0.config.image || "auto");
   // Sixel needs the cell pixel height to size to N rows; probe once.
   const cellPx = renderer === "sixel" ? (await probeCellHeight()) || 20 : 20;
   const reader = makeLineReader();
@@ -55,6 +78,12 @@ export async function runDrill(opts) {
     if (s === "thinking" && lastState !== "thinking") stdout.write("\x07");
     lastState = s;
   }, 1500);
+
+  if (advancedFrom) {
+    stdout.write(CLEAR + `\n\n  ${c.accent(c.bold(`🎉 ${advancedFrom} mastered!`))}\n`
+      + `  ${c.dim(`Now moving on to ${script} →`)}\n`);
+    await sleep(2600);
+  }
 
   try {
     for (;;) {
