@@ -20,9 +20,9 @@ status line.
 │  claude  >  explain promises │   ← you ask Claude something
 │  ⋯ thinking ⋯                │
 ├─────────────────────────────┤
-│            ┌──┐              │
-│         ばば      │   ← kana pane opens below while it thinks
-│            └──┘              │
+│            ┌──┐             │
+│            ばば              │   ← kana pane opens below while it thinks
+│            └──┘             │
 │  → ba ✓                     │   ← type the reading; focus is here automatically
 └─────────────────────────────┘
 ```
@@ -81,7 +81,13 @@ The integrated terminal can show real images, but it's **off by default**. Turn 
 ```sh
 kanthropic install         # adds a kana progress summary to the Claude status line
 kanthropic hooks-install   # wires Claude hooks so the kana pane auto-opens/closes
-kanthropic config --image on   # always render images (or `auto` to detect, `off` for blocks)
+```
+
+Rendering defaults to **`auto`** — real images where the terminal supports them, block-art
+otherwise (it never prints garbage). To force it either way:
+```sh
+kanthropic config --image on    # always images (e.g. for recording a demo)
+kanthropic config --image off   # always block-art
 ```
 
 Both edits are **fully reversible** and preserve anything you already had:

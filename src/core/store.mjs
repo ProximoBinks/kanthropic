@@ -25,9 +25,10 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { KANTHROPIC_DIR, PROGRESS_PATH } from "./paths.mjs";
 
-// image defaults OFF: inline images are an opt-in after `imagetest` confirms
-// the terminal supports them (else the drill would print base64 garbage).
-export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, glyphStyle: "quad", image: "off" };
+// image defaults to "auto": use real images where the terminal supports them
+// (sixel inside a sixel-tmux, iTerm2 standalone) and fall back to block-art
+// otherwise — so it never prints base64 garbage, but looks its best by default.
+export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, glyphStyle: "quad", image: "auto" };
 
 /** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any }} */
 export function emptyStore() {
