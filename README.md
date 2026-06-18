@@ -29,6 +29,7 @@ status line.
 
 ## Requirements
 
+- **macOS or Linux** (Windows via WSL) — the session uses tmux
 - **Node.js ≥ 18** (`node -v`)
 - **tmux** built with **sixel** support — for the in-session image rendering.
   `brew install tmux` on macOS ships a sixel-enabled build (3.5+). Check with:
@@ -47,14 +48,14 @@ A kana font (a subset of [Noto Sans JP](https://github.com/notofonts/noto-cjk), 
 ## Install
 
 ```sh
-git clone https://github.com/ProximoBinks/kanthropic.git
-cd kanthropic
-npm install
-npm link            # puts the `kanthropic` command on your PATH
+npm install -g kanthropic
 ```
 
-`npm link` symlinks the global `kanthropic` command to this repo, so **keep the folder
-where it is** (the hooks and status-line script reference it).
+Or from source (for development):
+```sh
+git clone https://github.com/ProximoBinks/kanthropic.git
+cd kanthropic && npm install && npm link   # `npm link` requires keeping the folder put
+```
 
 ## Enable images (VS Code / Antigravity / Cursor)
 
@@ -79,6 +80,12 @@ The integrated terminal can show real images, but it's **off by default**. Turn 
 
 ## Set it up
 
+```sh
+kanthropic setup    # installs the status line + hooks, then prints an environment check
+```
+
+`kanthropic doctor` re-runs that check any time (node, tmux + sixel, font, terminal image
+support, install state). Or do it manually:
 ```sh
 kanthropic install         # adds a kana progress summary to the Claude status line
 kanthropic hooks-install   # wires Claude hooks so the kana pane auto-opens/closes
@@ -145,6 +152,8 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 
 | Command | What it does |
 | --- | --- |
+| `setup` | install the status line + hooks, then print the environment check |
+| `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
 | `drill [--script k]` | endless image flashcards, FSRS-scored |
 | `study [--script k] [--count N]` | a fixed scored session with a recap |

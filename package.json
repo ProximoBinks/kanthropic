@@ -1,17 +1,21 @@
 {
   "name": "kanthropic",
   "version": "0.1.0",
-  "description": "Learn hiragana & katakana in the dead time while Claude Code is thinking. Ambient flashcards in the Claude Code CLI status line, plus a typed, FSRS-scored drill.",
+  "description": "Learn hiragana & katakana in the dead time while Claude Code is thinking — a kana flashcard pane that pops up beside Claude while it works.",
   "type": "module",
   "bin": {
     "kanthropic": "src/cli/index.mjs"
   },
+  "files": [
+    "src",
+    "assets",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "study": "node src/cli/index.mjs study",
-    "install-statusline": "node src/cli/index.mjs install",
-    "uninstall": "node src/cli/index.mjs uninstall",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit --allowJs --checkJs -p jsconfig.json || true"
+    "typecheck": "tsc --noEmit --allowJs --checkJs -p jsconfig.json || true",
+    "prepublishOnly": "vitest run"
   },
   "engines": {
     "node": ">=18"
@@ -23,6 +27,28 @@
   },
   "devDependencies": {
     "vitest": "^2.0.5"
+  },
+  "keywords": [
+    "kana",
+    "hiragana",
+    "katakana",
+    "japanese",
+    "flashcards",
+    "fsrs",
+    "spaced-repetition",
+    "claude",
+    "claude-code",
+    "cli",
+    "tmux",
+    "terminal"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProximoBinks/kanthropic.git"
+  },
+  "homepage": "https://github.com/ProximoBinks/kanthropic#readme",
+  "bugs": {
+    "url": "https://github.com/ProximoBinks/kanthropic/issues"
   },
   "license": "MIT",
   "author": "Elliot Koh"

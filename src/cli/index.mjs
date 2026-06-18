@@ -12,11 +12,13 @@
  * Options: --script hiragana|katakana   --count N   --front <ms>   --back <ms>
  */
 import { stdout } from "node:process";
+import { execFileSync } from "node:child_process";
 import { ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
 import { load, save } from "../core/store.mjs";
 import { pickNext } from "../core/ambient.mjs";
 import { install, uninstall, isInstalled } from "../install/install.mjs";
 import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
+import { getFont } from "./font.mjs";
 import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
@@ -121,6 +123,67 @@ async function cmdImageTest(rest) {
     + dim(`  • chafa  — braille symbol-art fallback (works anywhere)\n`));
 }
 
+const ok = (s) => `${green("✓")} ${s}`;
+const warn = (s) => `\x1b[33m⚠\x1b[0m ${s}`;
+const bad = (s) => `\x1b[31m✗\x1b[0m ${s}`;
+
+/** Run a shell check, returning trimmed stdout or null on failure. */
+function sh(cmd) {
+  try { return execFileSync("sh", ["-c", cmd], { encoding: "utf8" }).trim(); }
+  catch { return null; }
+}
+
+/** Environment check — what works, what to fix. Never changes anything. */
+function cmdDoctor() {
+  stdout.write(`\n${accent("kanthropic doctor")} — environment check\n\n`);
+
+  const major = +process.versions.node.split(".")[0];
+  stdout.write("  " + (major >= 18 ? ok(`node ${process.version}`) : bad(`node ${process.version} (need ≥ 18)`)) + "\n");
+  stdout.write("  " + (getFont() ? ok("kana font loaded (bundled — no install needed)") : bad("no kana font could be loaded")) + "\n");
+  stdout.write("  " + (sh("command -v claude") ? ok("claude CLI on PATH") : warn("claude CLI not found on PATH")) + "\n");
+
+  const tmuxV = sh("tmux -V");
+  if (!tmuxV) {
+    stdout.write("  " + warn("tmux not installed — needed for `kanthropic session` (brew install tmux)") + "\n");
+  } else {
+    const sixel = sh('strings "$(command -v tmux)" 2>/dev/null | grep -qi sixel && echo yes');
+    stdout.write("  " + ok(tmuxV) + "\n");
+    stdout.write("    " + (sixel
+      ? ok("built with sixel → real images render in the session")
+      : warn("built WITHOUT sixel → the session uses chafa braille (rebuild tmux for images)")) + "\n");
+  }
+
+  const tp = process.env.TERM_PROGRAM || "(unknown)";
+  const imgTerm = ["vscode", "iTerm.app", "WezTerm", "rio", "mintty"].includes(tp);
+  stdout.write("  " + (imgTerm
+    ? ok(`terminal: ${tp} (can show inline images)`)
+    : warn(`terminal: ${tp} (may not show inline images → chafa braille)`)) + "\n");
+  if (tp === "vscode") {
+    stdout.write("    " + dim('VS Code / Antigravity: set "terminal.integrated.enableImages": true → Reload Window → new terminal') + "\n");
+  }
+
+  stdout.write("  " + (isInstalled() ? ok("status line installed") : warn("status line not installed (run `kanthropic setup`)")) + "\n");
+  stdout.write("  " + (hooksInstalled() ? ok("session hooks installed") : warn("hooks not installed (run `kanthropic setup`)")) + "\n");
+
+  const cfg = load().config;
+  stdout.write("  " + dim(`config: image=${cfg.image}  script=${cfg.script}`) + "\n\n");
+}
+
+/** One-shot: install the status line + hooks, then print the doctor + next steps. */
+function cmdSetup() {
+  stdout.write(`\n${accent("kanthropic setup")}\n`);
+  const r1 = install();
+  stdout.write("  " + (r1.ok ? ok("status line installed") : bad(r1.reason)) + "\n");
+  const r2 = installHooks();
+  stdout.write("  " + (r2.ok ? ok("session hooks installed") : bad(r2.reason)) + "\n");
+  cmdDoctor();
+  stdout.write(`${bold("Next:")}\n`
+    + `  1. Crisp images (VS Code / Antigravity): set ${bold('"terminal.integrated.enableImages": true')},\n`
+    + `     then ${bold("Developer: Reload Window")}, then open a new terminal.\n`
+    + `  2. Start it:  ${bold("kanthropic session")}\n`
+    + dim(`     (No image support? It still works — falls back to chafa braille.)\n\n`));
+}
+
 function cmdPreview(flags) {
   const store = load();
   const script = scriptFrom(flags, store.config.script);
@@ -137,6 +200,8 @@ function cmdPreview(flags) {
 
 function help() {
   stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Claude Code thinks\n\n`
+    + `  ${bold("setup")}                install everything + print an environment check\n`
+    + `  ${bold("doctor")}               environment check (what works, what to fix)\n`
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
     + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
@@ -204,6 +269,8 @@ async function main() {
       stdout.write(`${green("✓ hooks removed.")} ${dim("(Your other hooks, if any, were kept.)")}\n`);
       break;
     }
+    case "setup": cmdSetup(); break;
+    case "doctor": cmdDoctor(); break;
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
     case "imagetest": await cmdImageTest(rest); break;
