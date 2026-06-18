@@ -12,6 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
+import { ensureLearned, learnedCount, practiceablePool, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
@@ -58,6 +59,7 @@ export function resolveScript(store, explicit) {
 /** @param {{ script?: import("../data/kana.mjs").Script }} [opts] */
 export async function runDrill(opts = {}) {
   const store0 = load();
+  if (ensureLearned(store0)) save(store0); // one-time: existing drilled cards count as learned
   const prev = store0.config.script;
   const script = resolveScript(store0, opts.script);
   // Persist + announce a one-time auto-advance (only fires on the transition).
@@ -79,6 +81,20 @@ export async function runDrill(opts = {}) {
     lastState = s;
   }, 1500);
 
+  // A centered message + wait. Returns true if the user quit (q/EOF).
+  const plainLen = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
+  async function messageScreen(lines) {
+    const rows = stdout.rows || 16, cols = stdout.columns || 40;
+    stdout.write("\x1b[?25l" + CLEAR);
+    stdout.write("\n".repeat(Math.max(0, (rows - lines.length - 3) >> 1)));
+    for (const l of lines) stdout.write(" ".repeat(Math.max(0, (cols - plainLen(l)) >> 1)) + l + "\n");
+    const foot = c.dim("[Enter] re-check · [q] quit");
+    stdout.write("\n" + " ".repeat(Math.max(0, (cols - plainLen(foot)) >> 1)) + foot + "\n");
+    stdout.write(`\x1b[${Math.max(2, rows - 1)};1H\x1b[?25h`);
+    const k = (await reader.next(""))?.trim().toLowerCase();
+    return k === null || k === "q";
+  }
+
   if (advancedFrom) {
     stdout.write(CLEAR + `\n\n  ${c.accent(c.bold(`🎉 ${advancedFrom} mastered!`))}\n`
       + `  ${c.dim(`Now moving on to ${script} →`)}\n`);
@@ -88,8 +104,24 @@ export async function runDrill(opts = {}) {
   try {
     for (;;) {
       const store = load();
-      const next = pickNext(script, store.cards, lastGlyph);
-      if (!next) break;
+      const now = Date.now();
+      // Practice ONLY what's been learned. Empty pool / nothing due → nudge to
+      // go learn more, rather than ambushing with an un-learned character.
+      if (learnedCount(store, script) === 0) {
+        if (await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
+          `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`])) break;
+        continue;
+      }
+      const pool = practiceablePool(store, script, now);
+      if (pool.size === 0) {
+        const more = learnedCount(store, script) < SCRIPT_TOTAL;
+        if (await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
+          more ? `Learn more:  ${c.accent(c.bold("kanthropic learn"))}`
+               : c.accent(`🎉 You've learned every ${script}!`)])) break;
+        continue;
+      }
+      const next = pickNext(script, store.cards, lastGlyph, now, undefined, pool);
+      if (!next) continue;
       lastGlyph = next.glyph;
       const entry = entryByGlyph(script, next.glyph);
 

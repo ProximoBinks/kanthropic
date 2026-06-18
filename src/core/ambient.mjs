@@ -31,14 +31,16 @@ function weight(card, now) {
  * @param {string | null} [avoidGlyph]
  * @param {number} [now]
  * @param {() => number} [rng]  injectable for tests
+ * @param {Set<string> | null} [only]  if given, restrict to these glyphs (the learned pool)
  * @returns {{ glyph: string, romaji: string } | null}
  */
-export function pickNext(script, cards, avoidGlyph = null, now = Date.now(), rng = Math.random) {
+export function pickNext(script, cards, avoidGlyph = null, now = Date.now(), rng = Math.random, only = null) {
   const pool = [];
   let total = 0;
   for (const entry of ENTRIES) {
     const g = glyphOf(entry, script);
     if (g === avoidGlyph) continue;
+    if (only && !only.has(g)) continue;
     const w = weight(cards[g], now);
     pool.push({ glyph: g, romaji: entry.romaji, w });
     total += w;

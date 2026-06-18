@@ -9,6 +9,7 @@ import { stdin, stdout } from "node:process";
 import { ENTRIES, glyph as glyphOf, checkAnswer, entryByGlyph } from "../data/kana.mjs";
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
+import { ensureLearned, learnedCount } from "../core/learned.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 
 const NEW_PER_SESSION = 10;
@@ -34,12 +35,13 @@ function shuffle(arr) {
 
 /** Due cards first, then a few new ones, capped + shuffled. Mirrors hypertools
  *  `buildQueue`. @param {Record<string, any>} cards @param {Script} script */
-function buildQueue(cards, script) {
+function buildQueue(cards, script, learned) {
   const now = Date.now();
   const due = [];
   const fresh = [];
   for (const entry of ENTRIES) {
     const g = glyphOf(entry, script);
+    if (!learned.has(g)) continue; // only practice what's been learned
     const card = cards[g];
     if (!card || card.seen === 0) fresh.push(entry);
     else if (card.due <= now) due.push({ entry, due: card.due });
@@ -53,14 +55,23 @@ function buildQueue(cards, script) {
 export async function runStudy(opts) {
   const script = opts.script;
   const store = load();
+  ensureLearned(store); // one-time: existing drilled cards count as learned
   store.config.script = script; // remember last-used script for ambient too
-  let queue = buildQueue(store.cards, script);
+
+  if (learnedCount(store, script) === 0) {
+    save(store);
+    stdout.write(`\n${c.dim("📖 No " + script + " learned yet.")} Run `
+      + `${c.accent("kanthropic learn")} first.\n\n`);
+    return;
+  }
+
+  let queue = buildQueue(store.cards, script, new Set(store.learned));
   if (typeof opts.count === "number" && opts.count > 0) queue = queue.slice(0, opts.count);
 
   if (queue.length === 0) {
     save(store);
-    stdout.write("\n" + c.green("✓ All caught up.") + " Nothing is due and every "
-      + `${script} character has been started.\n\n`);
+    stdout.write("\n" + c.green("✓ All caught up.") + " Nothing due in your learned "
+      + `${script}. Learn more with ${c.accent("kanthropic learn")}.\n\n`);
     return;
   }
 

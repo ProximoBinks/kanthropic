@@ -32,7 +32,7 @@ export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700,
 
 /** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[] }} */
 export function emptyStore() {
-  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [] };
+  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [], learnedMigrated: false };
 }
 
 /** Load the store, tolerating a missing/corrupt file by returning a fresh one.
@@ -48,6 +48,7 @@ export function load() {
       cards: data.cards ?? {},
       ambient: data.ambient ?? null,
       learned: Array.isArray(data.learned) ? data.learned : [],
+      learnedMigrated: !!data.learnedMigrated,
     };
   } catch {
     return emptyStore();

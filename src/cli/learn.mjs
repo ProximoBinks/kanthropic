@@ -10,6 +10,7 @@ import { stdout } from "node:process";
 import { GROUPS, glyph as glyphOf } from "../data/kana.mjs";
 import { mnemonicFor } from "../data/mnemonics.mjs";
 import { load, save } from "../core/store.mjs";
+import { ensureLearned } from "../core/learned.mjs";
 import { pickRenderer, glyphImage, glyphSixel, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -61,6 +62,7 @@ async function glyphArt(glyph, renderer, cellPx, rows, cols) {
 export async function runLearn(opts) {
   const script = opts.script;
   const other = script === "hiragana" ? "katakana" : "hiragana";
+  const m0 = load(); if (ensureLearned(m0)) save(m0); // existing cards count as learned
   const renderer = pickRenderer(load().config.image || "auto");
   const cellPx = renderer === "sixel" ? (await probeCellHeight()) || 20 : 20;
   const rows = rowsFor(script);
@@ -84,10 +86,23 @@ export async function runLearn(opts) {
       });
       const total = rows.reduce((a, r) => a + r.entries.length, 0);
       const got = rows.reduce((a, r) => a + r.entries.filter((e) => learned.has(glyphOf(e, script))).length, 0);
-      stdout.write(`\n  ${c.dim(`${got}/${total} learned`)}  ·  type a ${c.bold("number")} to study a row, or ${c.bold("q")} to quit\n  → `);
+      stdout.write(`\n  ${c.dim(`${got}/${total} learned`)}  ·  ${c.bold("number")} study · `
+        + `${c.bold("-number")} un-learn · ${c.bold("q")} quit\n  → `);
 
       const sel = (await reader.next(""))?.trim().toLowerCase();
       if (sel === null || sel === "q" || sel === "quit") break;
+      // `-N` un-learns row N (pulls it back out of the practice pool).
+      if (sel.startsWith("-")) {
+        const ri = parseInt(sel.slice(1), 10) - 1;
+        if (ri >= 0 && ri < rows.length) {
+          const fresh = load();
+          const set = new Set(fresh.learned);
+          for (const e of rows[ri].entries) set.delete(glyphOf(e, script));
+          fresh.learned = [...set];
+          save(fresh);
+        }
+        continue;
+      }
       const idx = parseInt(sel, 10) - 1;
       if (!(idx >= 0 && idx < rows.length)) continue;
 
