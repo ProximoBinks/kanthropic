@@ -165,6 +165,12 @@ kanthropic drill --script katakana
 ```
 When you're caught up (nothing due), the drill nudges you back to `kanthropic learn` for more.
 
+**Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
+katakana without restarting (this works in the **session pane** too, and persists as your default).
+The session otherwise opens on your configured default — set it with `kanthropic config --script
+katakana`. With no `--script` the drill auto-advances hiragana → katakana once every hiragana is
+mastered (`kanthropic config --advance off` to disable).
+
 **Check / tune:**
 ```sh
 kanthropic status                       # install state + your progress

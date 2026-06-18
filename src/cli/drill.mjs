@@ -64,7 +64,9 @@ export async function runDrill(opts = {}) {
   const store0 = load();
   if (ensureLearned(store0)) save(store0); // one-time: existing drilled cards count as learned
   const prev = store0.config.script;
-  const script = resolveScript(store0, opts.script);
+  // `let` so a live `/h` `/k` swap can change scripts mid-drill (persisted to
+  // config, so the session pane keeps it on the next card too).
+  let script = resolveScript(store0, opts.script);
   // Persist + announce a one-time auto-advance (only fires on the transition).
   const advancedFrom = (!opts.script && script !== prev) ? prev : null;
   if (advancedFrom) { store0.config.script = script; save(store0); }
@@ -114,7 +116,8 @@ export async function runDrill(opts = {}) {
       if (learnedCount(store, script) === 0) {
         if (limit) break; // bounded session: nothing to do → go to recap
         if (await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
-          `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`])) break;
+          `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`,
+          "", c.dim("(or type /h · /k to switch script)")])) break;
         continue;
       }
       const pool = practiceablePool(store, script, now);
@@ -123,7 +126,8 @@ export async function runDrill(opts = {}) {
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         if (await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
           more ? `Learn more:  ${c.accent(c.bold("kanthropic learn"))}`
-               : c.accent(`🎉 You've learned every ${script}!`)])) break;
+               : c.accent(`🎉 You've learned every ${script}!`),
+          "", c.dim("(or type /h · /k to switch script)")])) break;
         continue;
       }
       const next = pickNext(script, store.cards, lastGlyph, now, undefined, pool);
@@ -201,6 +205,16 @@ export async function runDrill(opts = {}) {
       const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset
       const answer = await reader.next(`${dot} ${c.dim(status)}  ${c.dim("→")} `);
       if (answer === null) break; // pane closed
+
+      // Slash-commands swap script live (never a valid rōmaji answer). Persist
+      // to config so the session pane stays on the new script next card.
+      const cmd = answer.trim().toLowerCase();
+      if (/^\/(h|hira|hiragana|k|kata|katakana)$/.test(cmd)) {
+        script = cmd[1] === "k" ? "katakana" : "hiragana";
+        store.config.script = script; save(store);
+        lastGlyph = null;
+        continue;
+      }
 
       const ok = checkAnswer(answer, entry);
       store.cards[next.glyph] = gradeCard(script, next.glyph, store.cards[next.glyph], ok);
