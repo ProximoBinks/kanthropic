@@ -12,7 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
-import { ensureLearned, learnedCount, practiceablePool, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
@@ -78,6 +78,7 @@ export async function runDrill(opts = {}) {
   let lastGlyph = null;
   let correct = 0, seen = 0;
   const missed = [];
+  let cram = false; // "practice anyway": drill the whole learned pool, ignoring due dates
   let lastState = readSessionState();
 
   // Soft bell when Claude transitions into thinking — a non-intrusive cue.
@@ -87,18 +88,23 @@ export async function runDrill(opts = {}) {
     lastState = s;
   }, 1500);
 
-  // A centered message + wait. Returns true if the user quit (q/EOF).
+  // A centered message + wait. Returns the chosen action: "quit", "recheck",
+  // or (when `allowCram`) "cram" if the user pressed `r` to practice anyway.
   const plainLen = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
-  async function messageScreen(lines) {
+  async function messageScreen(lines, { allowCram = false } = {}) {
     const rows = stdout.rows || 16, cols = stdout.columns || 40;
     stdout.write("\x1b[?25l" + CLEAR);
     stdout.write("\n".repeat(Math.max(0, (rows - lines.length - 3) >> 1)));
     for (const l of lines) stdout.write(" ".repeat(Math.max(0, (cols - plainLen(l)) >> 1)) + l + "\n");
-    const foot = c.dim("[Enter] re-check · [q] quit");
+    const foot = c.dim(allowCram
+      ? "[Enter] re-check · [r] practice anyway · [q] quit"
+      : "[Enter] re-check · [q] quit");
     stdout.write("\n" + " ".repeat(Math.max(0, (cols - plainLen(foot)) >> 1)) + foot + "\n");
     stdout.write(`\x1b[${Math.max(2, rows - 1)};1H\x1b[?25h`);
     const k = (await reader.next(""))?.trim().toLowerCase();
-    return k === null || k === "q";
+    if (k === null || k === "q") return "quit";
+    if (allowCram && k === "r") return "cram";
+    return "recheck";
   }
 
   if (advancedFrom) {
@@ -117,17 +123,21 @@ export async function runDrill(opts = {}) {
         if (limit) break; // bounded session: nothing to do → go to recap
         if (await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
           `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`,
-          "", c.dim("(or type /h · /k to switch script)")])) break;
+          "", c.dim("(or type /h · /k to switch script)")]) === "quit") break;
         continue;
       }
-      const pool = practiceablePool(store, script, now);
+      // `cram` keeps drilling the whole learned pool even when nothing is due.
+      const pool = cram ? learnedSet(store, script) : practiceablePool(store, script, now);
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
-        if (await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
+        const action = await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
           more ? `Learn more:  ${c.accent(c.bold("kanthropic learn"))}`
                : c.accent(`🎉 You've learned every ${script}!`),
-          "", c.dim("(or type /h · /k to switch script)")])) break;
+          "", c.dim("[r] keep practicing this set anyway · /h /k switch script")],
+          { allowCram: true });
+        if (action === "quit") break;
+        if (action === "cram") cram = true; // ignore due dates from here on
         continue;
       }
       const next = pickNext(script, store.cards, lastGlyph, now, undefined, pool);
@@ -200,8 +210,9 @@ export async function runDrill(opts = {}) {
       // Drop any Enter spammed during the previous grade/sleep so it can't
       // auto-answer the next few cards (interactive only — keep piped input).
       if (process.stdin.isTTY) reader.flush();
-      // Status (dot + script + score) lives on the prompt line now.
-      const status = `${script} ${correct}/${seen}`;
+      // Status (dot + script + score) lives on the prompt line now. A trailing
+      // ⟳ marks "practice anyway" mode (drilling past due dates).
+      const status = `${script}${cram ? " ⟳" : ""} ${correct}/${seen}`;
       const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset
       const answer = await reader.next(`${dot} ${c.dim(status)}  ${c.dim("→")} `);
       if (answer === null) break; // pane closed

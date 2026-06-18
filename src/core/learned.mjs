@@ -60,6 +60,17 @@ export function learnedCount(store, script) {
   return n;
 }
 
+/** Every learned glyph of `script`, ignoring due dates (for "practice anyway"). */
+export function learnedSet(store, script) {
+  const set = new Set(store.learned);
+  const out = new Set();
+  for (const e of ENTRIES) {
+    const g = glyphOf(e, script);
+    if (set.has(g)) out.add(g);
+  }
+  return out;
+}
+
 /**
  * Glyphs of `script` that are learned AND worth practicing now — never drilled
  * (new) or due for review. Empty ⇒ you're caught up.

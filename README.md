@@ -163,7 +163,10 @@ kanthropic drill              # endless flashcards, image rendering, FSRS-scored
 kanthropic drill --count 25   # a fixed 25-card session ending in a recap
 kanthropic drill --script katakana
 ```
-When you're caught up (nothing due), the drill nudges you back to `kanthropic learn` for more.
+When you're caught up (nothing due), the drill nudges you back to `kanthropic learn` for more —
+or press **`r` to "practice anyway"** and keep drilling your whole learned set, ignoring the FSRS
+due timers (handy when you're studying just one row and want to keep going). A `⟳` in the status
+line marks that mode; it doesn't corrupt your real schedule.
 
 **Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
 katakana without restarting — this works in the **session pane** too, and persists as your

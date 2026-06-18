@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureLearned, learnedCount, practiceablePool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, isMastered, resetGlyphs } from "../src/core/learned.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
 
 const NOW = 1_000_000_000_000;
@@ -28,6 +28,8 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
     const pool = practiceablePool(store, "hiragana", NOW);
     expect([...pool].sort()).toEqual(["あ", "う"]);
     expect(learnedCount(store, "hiragana")).toBe(3);
+    // learnedSet ignores due dates entirely (the "practice anyway" pool)
+    expect([...learnedSet(store, "hiragana")].sort()).toEqual(["あ", "い", "う"]);
   });
 
   it("pickNext with a pool only returns glyphs from that pool", () => {
