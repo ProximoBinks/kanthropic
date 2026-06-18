@@ -21,6 +21,7 @@ import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
+import { glyphChafa } from "./glyphChafa.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -94,25 +95,30 @@ function cmdConfig(flags) {
 }
 
 async function cmdImageTest(rest) {
+  const flags = parseFlags(rest);
   const ch = rest.find((a) => !a.startsWith("--")) || "ば";
-  const renderer = pickRenderer("on"); // force an image attempt for the test
-  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} via ${bold(renderer)}:\n\n`);
-  if (renderer === "sixel") {
+  // `--via sixel|iterm|chafa` forces a specific renderer; otherwise auto-detect.
+  const via = ["sixel", "iterm", "chafa"].includes(flags.via) ? flags.via : pickRenderer("on");
+  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} via ${bold(via)}:\n\n`);
+  if (via === "sixel") {
     const cellPx = (await probeCellHeight()) || 20;
     const sx = glyphSixel(ch, 10 * cellPx);
     if (!sx) { stdout.write(dim("(no Japanese font found)\n")); return; }
     stdout.write(sx.sixel + "\n\n");
+  } else if (via === "chafa") {
+    let lines = null;
+    try { lines = await glyphChafa(ch, 12, 40, { symbols: "braille" }); }
+    catch (e) { stdout.write(dim(`(chafa failed: ${e?.message ?? e})\n`)); return; }
+    stdout.write(accent((lines || ["(no Japanese font found)"]).join("\n")) + "\n\n");
   } else {
     const img = glyphImage(ch, 10);
     if (!img) { stdout.write(dim("(no Japanese font found)\n")); return; }
     stdout.write(img.escape + "\n\n");
   }
-  stdout.write(`If you see a crisp ${bold(ch)} above, images work here — turn them on with:\n`);
-  stdout.write(`  ${bold("kanthropic config --image on")}  ${dim("(or leave --image auto)")}\n`);
-  stdout.write(dim(`\nIf you see garbled text instead:\n`
-    + `  • VS Code / Antigravity: enable "terminal.integrated.enableImages", reload.\n`
-    + `  • Inside tmux you need a sixel-enabled tmux (yours is); the session uses sixel.\n`
-    + `  • Fall back any time with:  kanthropic config --image off\n`));
+  stdout.write(dim(`Force a specific one:  kanthropic imagetest ${ch} --via sixel|iterm|chafa\n`)
+    + dim(`  • sixel  — real image inside a sixel-enabled tmux (the session)\n`)
+    + dim(`  • iterm  — real image in a standalone iTerm2/Sixel terminal\n`)
+    + dim(`  • chafa  — braille symbol-art fallback (works anywhere)\n`));
 }
 
 function cmdPreview(flags) {
