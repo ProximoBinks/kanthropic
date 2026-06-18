@@ -10,7 +10,7 @@ import { stdout } from "node:process";
 import { GROUPS, glyph as glyphOf } from "../data/kana.mjs";
 import { mnemonicFor } from "../data/mnemonics.mjs";
 import { load, save } from "../core/store.mjs";
-import { ensureLearned } from "../core/learned.mjs";
+import { ensureLearned, isMastered, resetGlyphs } from "../core/learned.mjs";
 import { pickRenderer, glyphImage, glyphSixel, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -75,30 +75,36 @@ export async function runLearn(opts) {
 
       // ── row menu ──────────────────────────────────────────────────────
       stdout.write(CLEAR + `\n  ${c.accent(c.bold(`learn ${script}`))}  ${c.dim("— pick a row to study")}\n\n`);
+      // Each row's icon reflects ACTUAL progress from your FSRS deck, not just
+      // whether you toggled it: ✓ = every char mastered, ◐ = some progress,
+      // · = not started. So drilling chars anywhere updates the list.
       let section = "";
+      let masteredRows = 0;
       rows.forEach((r, i) => {
         if (r.section !== section) { section = r.section; stdout.write(`  ${c.dim(section)}\n`); }
         const glyphs = r.entries.map((e) => glyphOf(e, script));
-        const done = glyphs.every((g) => learned.has(g));
-        const mark = done ? c.green("✓") : " ";
+        const mastered = glyphs.filter((g) => isMastered(store.cards[g])).length;
+        const started = glyphs.filter((g) => learned.has(g) || (store.cards[g]?.seen ?? 0) > 0).length;
+        let mark, frac;
+        if (mastered === glyphs.length) { mark = c.green("✓"); masteredRows++; frac = ""; }
+        else if (started > 0 || mastered > 0) { mark = c.accent("◐"); frac = c.dim(` ${mastered}/${glyphs.length}`); }
+        else { mark = c.dim("·"); frac = ""; }
         const n = String(i + 1).padStart(2, " ");
-        stdout.write(`   ${mark} ${c.bold(n)}  ${c.accent(glyphs.join(" "))}  ${c.dim(r.entries.map((e) => e.romaji).join(" "))}\n`);
+        stdout.write(`   ${mark} ${c.bold(n)}  ${c.accent(glyphs.join(" "))}  ${c.dim(r.entries.map((e) => e.romaji).join(" "))}${frac}\n`);
       });
-      const total = rows.reduce((a, r) => a + r.entries.length, 0);
-      const got = rows.reduce((a, r) => a + r.entries.filter((e) => learned.has(glyphOf(e, script))).length, 0);
-      stdout.write(`\n  ${c.dim(`${got}/${total} learned`)}  ·  ${c.bold("number")} study · `
-        + `${c.bold("-number")} un-learn · ${c.bold("q")} quit\n  → `);
+      stdout.write(`\n  ${c.dim(`${masteredRows}/${rows.length} rows mastered`)}  ${c.dim("·")}  `
+        + `${c.green("✓")} ${c.dim("mastered")} ${c.accent("◐")} ${c.dim("learning")} ${c.dim("· new")}\n`);
+      stdout.write(`  ${c.bold("number")} study · ${c.bold("-number")} reset row · ${c.bold("q")} quit\n  → `);
 
       const sel = (await reader.next(""))?.trim().toLowerCase();
       if (sel === null || sel === "q" || sel === "quit") break;
-      // `-N` un-learns row N (pulls it back out of the practice pool).
+      // `-N` resets row N: forget its cards AND pull it out of the practice
+      // pool, so the row goes back to "· new" and the icon reflects that.
       if (sel.startsWith("-")) {
         const ri = parseInt(sel.slice(1), 10) - 1;
         if (ri >= 0 && ri < rows.length) {
           const fresh = load();
-          const set = new Set(fresh.learned);
-          for (const e of rows[ri].entries) set.delete(glyphOf(e, script));
-          fresh.learned = [...set];
+          resetGlyphs(fresh, rows[ri].entries.map((e) => glyphOf(e, script)));
           save(fresh);
         }
         continue;

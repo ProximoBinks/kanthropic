@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureLearned, learnedCount, practiceablePool } from "../src/core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
 
 const NOW = 1_000_000_000_000;
@@ -40,5 +40,25 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
 
   it("pickNext returns null when the pool is empty", () => {
     expect(pickNext("hiragana", {}, null, NOW, Math.random, new Set())).toBeNull();
+  });
+
+  it("isMastered tracks FSRS Review state (≥ 2)", () => {
+    expect(isMastered(undefined)).toBe(false);
+    expect(isMastered({ state: 1 })).toBe(false);
+    expect(isMastered({ state: 2 })).toBe(true);
+    expect(isMastered({ state: 3 })).toBe(true);
+  });
+
+  it("resetGlyphs forgets cards + pool, counting either", () => {
+    const store = {
+      learned: ["あ", "い", "う"],
+      cards: { "あ": { seen: 5, state: 2 }, "い": { seen: 0 }, "か": { seen: 3 } },
+    };
+    // あ (card+pool), い (pool only), う (pool only, no card) → 3 cleared
+    const n = resetGlyphs(store, ["あ", "い", "う"]);
+    expect(n).toBe(3);
+    expect(store.cards["あ"]).toBeUndefined();
+    expect(store.cards["か"]).toEqual({ seen: 3 }); // out of scope → untouched
+    expect(store.learned).toEqual([]);
   });
 });

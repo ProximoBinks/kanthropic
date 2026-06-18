@@ -22,6 +22,7 @@ import { getFont } from "./font.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
 import { runLearn } from "./learn.mjs";
+import { runReset } from "./reset.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
 
@@ -210,6 +211,7 @@ function help() {
     + `  ${bold("learn")} [--script k]   learn kana from zero, row by row (image + mnemonic)\n`
     + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
     + `  ${bold("drill")} [--count N]    practice your learned kana (endless, or N for a scored session)\n`
+    + `  ${bold("reset")} [--script k]   wipe progress for a clean slate (asks first; --yes to skip)\n`
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
@@ -251,6 +253,13 @@ async function main() {
       await runDrill({
         script: flags.script ? scriptFrom(flags, "hiragana") : undefined,
         count: flags.count ? +flags.count : undefined,
+      });
+      break;
+    case "reset":
+      // No --script → both scripts. --yes/-y skips the confirmation.
+      await runReset({
+        script: flags.script ? scriptFrom(flags, "hiragana") : null,
+        yes: flags.yes === true || rest.includes("-y"),
       });
       break;
     case "session": {

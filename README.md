@@ -148,9 +148,13 @@ List sessions with `tmux ls`.
 kanthropic learn              # row-by-row: big image + rōmaji + hira↔kata + a mnemonic
 ```
 `learn` is the **only** place new characters enter your rotation. Pick a row, walk it, and it's
-added to your practice pool; `-N` un-learns a row to pull it back out. Everything else
-(`drill`, the session pane) only reinforces what you've already learned — so you're never
-ambushed by a character you haven't seen.
+added to your practice pool. Everything else (`drill`, the session pane) only reinforces what
+you've already learned — so you're never ambushed by a character you haven't seen.
+
+The row list reflects your **actual** mastery, drawn from your FSRS deck (so it updates as you
+drill anything): `✓` mastered (every character in the row at FSRS *Review*), `◐ m/n` learning
+(some progress), `·` new. Type `-N` to **reset row N** — forget its cards and pull it out of the
+pool, so it goes back to `· new`.
 
 **Practice what you've learned (any terminal window):**
 ```sh
@@ -167,6 +171,7 @@ kanthropic config --script katakana     # default script
 kanthropic config --image on|auto|off   # image rendering mode
 kanthropic config --advance off         # disable auto-advance (see below)
 kanthropic imagetest ば                  # check image rendering here
+kanthropic reset --script hiragana      # wipe a script's progress (asks first; --yes to skip)
 ```
 
 **Hiragana &amp; katakana** are both fully supported (all 104 characters each, with separate
@@ -184,6 +189,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
 | `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool |
 | `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap |
+| `reset [--script k] [--yes]` | wipe FSRS progress + the learned pool for a clean slate (both scripts unless `--script`); asks before deleting |
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
 | `status` | install state + progress per script |

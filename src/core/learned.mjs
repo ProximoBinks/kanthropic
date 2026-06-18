@@ -9,6 +9,32 @@ import { ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
 /** Glyphs (one script) the user can possibly learn. */
 export const SCRIPT_TOTAL = ENTRIES.length; // 104
 
+/** FSRS state at which a card counts as "mastered" (Review). */
+export const MASTERED_STATE = 2;
+
+/** Has this card graduated to FSRS Review? @param {{state?:number}=} card */
+export function isMastered(card) {
+  return (card?.state ?? 0) >= MASTERED_STATE;
+}
+
+/**
+ * Wipe progress for `glyphs`: forget their FSRS cards and pull them out of the
+ * learned pool. Mutates `store`; returns the number of glyphs actually cleared.
+ * @param {{cards:Record<string,any>, learned:string[]}} store
+ * @param {Iterable<string>} glyphs
+ */
+export function resetGlyphs(store, glyphs) {
+  const drop = new Set(glyphs);
+  const pool = new Set(store.learned || []);
+  let n = 0;
+  for (const g of drop) {
+    if (store.cards[g] || pool.has(g)) n++; // cleared if it had a card or sat in the pool
+    if (store.cards[g]) delete store.cards[g];
+  }
+  store.learned = (store.learned || []).filter((g) => !drop.has(g));
+  return n;
+}
+
 /**
  * One-time migration for users who drilled before learn mode existed: seed
  * `learned` from any glyph they've already practiced, so they keep their deck.
