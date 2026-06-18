@@ -22,6 +22,7 @@ import { getFont } from "./font.mjs";
 import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
+import { runLearn } from "./learn.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
 
@@ -207,6 +208,7 @@ function help() {
     + `  ${bold("doctor")}               environment check (what works, what to fix)\n`
     + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
+    + `  ${bold("learn")} [--script k]   learn kana from zero, row by row (image + mnemonic)\n`
     + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
     + `  ${bold("drill")} [--script k]   endless kana input box for a side pane (reacts to Claude)\n`
     + `  ${bold("study")} [--script k]   typed, scored session — run at the idle prompt\n`
@@ -243,6 +245,9 @@ async function main() {
     }
     case "study":
       await runStudy({ script: scriptFrom(flags, store.config.script), count: flags.count ? +flags.count : undefined });
+      break;
+    case "learn":
+      await runLearn({ script: scriptFrom(flags, store.config.script) });
       break;
     case "drill":
       // Pass a script only when --script is explicit; otherwise let the drill

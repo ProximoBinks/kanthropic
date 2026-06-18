@@ -30,9 +30,9 @@ import { KANTHROPIC_DIR, PROGRESS_PATH } from "./paths.mjs";
 // symbol-art otherwise — so it looks its best by default and never garbles.
 export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true };
 
-/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any }} */
+/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[] }} */
 export function emptyStore() {
-  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null };
+  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [] };
 }
 
 /** Load the store, tolerating a missing/corrupt file by returning a fresh one.
@@ -47,6 +47,7 @@ export function load() {
       config: { ...DEFAULT_CONFIG, ...(data.config ?? {}) },
       cards: data.cards ?? {},
       ambient: data.ambient ?? null,
+      learned: Array.isArray(data.learned) ? data.learned : [],
     };
   } catch {
     return emptyStore();
