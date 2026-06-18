@@ -166,10 +166,9 @@ kanthropic drill --script katakana
 When you're caught up (nothing due), the drill nudges you back to `kanthropic learn` for more.
 
 **Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
-katakana without restarting (this works in the **session pane** too, and persists as your default).
-The session otherwise opens on your configured default — set it with `kanthropic config --script
-katakana`. With no `--script` the drill auto-advances hiragana → katakana once every hiragana is
-mastered (`kanthropic config --advance off` to disable).
+katakana without restarting — this works in the **session pane** too, and persists as your
+default. (The session otherwise opens on your configured default; set it with `kanthropic config
+--script katakana`.)
 
 **Check / tune:**
 ```sh
@@ -194,8 +193,8 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `setup` | install the status line + hooks, then print the environment check |
 | `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
-| `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool |
-| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap |
+| `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool. In the menu: `N` study row · `-N` reset row · `s` switch script |
+| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap. At the prompt: `/h` `/k` switch script |
 | `reset [--script k] [--yes]` | wipe FSRS progress + the learned pool for a clean slate (both scripts unless `--script`); asks before deleting |
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
@@ -213,6 +212,10 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
   or **chafa braille symbol-art** as a universal fallback.
 - **Scheduling** uses real FSRS (`ts-fsrs`); progress lives in `~/.kanthropic/progress.json`,
   shared across all sessions (atomic writes, so concurrent windows never corrupt it).
+- **A learned pool gates the drill** — `learn` is the only way a character enters rotation, so
+  the drill and session pane only ever reinforce kana you've deliberately studied. The `learn`
+  row icons read your live FSRS state (`✓` mastered / `◐` learning / `·` new), and `reset` (or
+  `-N` in the menu) clears it back out.
 - Everything is **reversible** — the status line and hooks are removed cleanly, preserving any
   config you already had, and your progress is kept.
 
