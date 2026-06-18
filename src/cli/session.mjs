@@ -34,7 +34,7 @@ function sessionExists(target) {
  * its own width/term layer between the program and the outer terminal):
  *   - a consistent terminfo (`tmux-256color`) both sides understand;
  *   - truecolor passthrough so the glyph accent renders cleanly;
- *   - UTF-8 locale propagated into the session so block-art and any kana text
+ *   - UTF-8 locale propagated into the session so symbol-art and any kana text
  *     can't be mangled by a non-UTF-8 LANG.
  * We don't print kana as text (we rasterize to width-1 block elements, which
  * dodges the East-Asian-Width problem entirely), so this is belt-and-braces —

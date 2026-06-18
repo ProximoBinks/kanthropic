@@ -17,6 +17,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "chafa-wasm": "^0.3.3",
     "opentype.js": "^2.0.0",
     "ts-fsrs": "^5.4.1"
   },

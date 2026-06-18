@@ -4,13 +4,13 @@
  * Antigravity's terminal can display true images (when
  * `terminal.integrated.enableImages` is on). No block/braille approximation.
  *
- * Self-contained: rasterizes the font outline (reusing bigGlyph's loader) to an
+ * Self-contained: rasterizes the font outline (via the shared font loader) to an
  * anti-aliased RGBA bitmap, encodes a PNG with Node's zlib (no image deps), and
  * wraps the escape for tmux passthrough when inside a session.
  */
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
-import { getFont, flatten } from "./bigGlyph.mjs";
+import { getFont, flatten } from "./font.mjs";
 
 // ── minimal PNG encoder (RGBA, no dependencies) ────────────────────────────
 const CRC = (() => {
@@ -46,7 +46,7 @@ function encodePNG(w, h, rgba) {
 }
 
 // ── anti-aliased coverage rasterizer ───────────────────────────────────────
-function coverage(subs, bb, W, H, SS = 3) {
+export function coverage(subs, bb, W, H, SS = 3) {
   const gw = bb.x2 - bb.x1, gh = bb.y2 - bb.y1;
   const cov = Array.from({ length: H }, () => new Float32Array(W));
   const hiH = H * SS;
@@ -239,19 +239,19 @@ function tmuxHasSixel() {
 /**
  * Pick the renderer for the current terminal: a real sixel image inside a
  * sixel-capable tmux, a real iTerm2 image in a capable standalone terminal, or
- * block-art otherwise.
- * @param {"on"|"off"|"auto"} mode @returns {"sixel"|"iterm"|"blocks"}
+ * chafa braille symbol-art as the universal fallback.
+ * @param {"on"|"off"|"auto"} mode @returns {"sixel"|"iterm"|"chafa"}
  */
 export function pickRenderer(mode) {
-  if (mode === "off") return "blocks";
+  if (mode === "off") return "chafa";
   if (process.env.TMUX) {
     if (mode === "on") return "sixel";          // force the image in the session
-    return tmuxHasSixel() ? "sixel" : "blocks"; // auto: only when detected
+    return tmuxHasSixel() ? "sixel" : "chafa";  // auto: only when detected
   }
   if (mode === "on") return "iterm";
-  if (!process.stdout.isTTY) return "blocks";
+  if (!process.stdout.isTTY) return "chafa";
   const tp = process.env.TERM_PROGRAM || "";
-  return ["vscode", "iTerm.app", "WezTerm", "rio", "mintty"].includes(tp) ? "iterm" : "blocks";
+  return ["vscode", "iTerm.app", "WezTerm", "rio", "mintty"].includes(tp) ? "iterm" : "chafa";
 }
 
 /**
@@ -259,9 +259,9 @@ export function pickRenderer(mode) {
  *
  * NEVER inside tmux: tmux is a cell-grid multiplexer that doesn't store inline
  * images, so it erases passthrough graphics on its next redraw (status tick,
- * card change) — leaving a broken sliver. The `kanthropic session` pane is
- * tmux, so it falls back to block-art; standalone `kanthropic drill` gets
- * real images.
+ * card change) — leaving a broken sliver. Inside tmux we use the native sixel
+ * path (which tmux stores in its grid) or chafa braille; standalone gets real
+ * iTerm2 images.
  *
  * @param {"on"|"off"|"auto"} mode
  */

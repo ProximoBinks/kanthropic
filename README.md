@@ -35,10 +35,10 @@ status line.
   ```sh
   tmux -V && (strings "$(which tmux)" | grep -qi sixel && echo "sixel: yes" || echo "sixel: no")
   ```
-  (Without sixel-tmux the session still works — it just falls back to block-art glyphs.)
+  (Without sixel-tmux the session still works — it just falls back to chafa braille.)
 - **Claude Code** CLI (`claude`)
 - An **image-capable terminal** for the crisp rendering (see *Enable images* below). Anything
-  else degrades to block-art automatically.
+  else degrades to chafa braille symbol-art automatically.
 
 A kana font (a subset of [Noto Sans JP](https://github.com/notofonts/noto-cjk), OFL) is
 **bundled** in `assets/fonts/`, so glyphs render with no system font needed. Point
@@ -71,8 +71,8 @@ The integrated terminal can show real images, but it's **off by default**. Turn 
    kanthropic imagetest
    ```
    If you see a crisp **ば**, you're set. If you see a wall of text instead, images aren't
-   active in this terminal — kanthropic will fall back to block-art (still fine), or run
-   `kanthropic config --image off` to force blocks.
+   active in this terminal — kanthropic falls back to chafa braille symbol-art (still fine), or run
+   `kanthropic config --image off` to force chafa braille.
 
 > Already using a native image terminal (iTerm2, kitty, WezTerm, Ghostty)? Then standalone
 > `kanthropic drill` shows images with no setup. The **session** (tmux) needs sixel-tmux.
@@ -84,11 +84,11 @@ kanthropic install         # adds a kana progress summary to the Claude status l
 kanthropic hooks-install   # wires Claude hooks so the kana pane auto-opens/closes
 ```
 
-Rendering defaults to **`auto`** — real images where the terminal supports them, block-art
+Rendering defaults to **`auto`** — real images where the terminal supports them, chafa braille symbol-art
 otherwise (it never prints garbage). To force it either way:
 ```sh
 kanthropic config --image on    # always images (e.g. for recording a demo)
-kanthropic config --image off   # always block-art
+kanthropic config --image off   # always chafa braille symbol-art
 ```
 
 Both edits are **fully reversible** and preserve anything you already had:
@@ -132,8 +132,7 @@ kanthropic status                       # install state + your progress
 kanthropic config --script katakana     # default script
 kanthropic config --image on|auto|off   # image rendering mode
 kanthropic config --advance off         # disable auto-advance (see below)
-kanthropic glyphtest みょ                # compare block-art styles
-kanthropic imagetest ば                  # test image rendering here
+kanthropic imagetest ば                  # check image rendering here
 ```
 
 **Hiragana &amp; katakana** are both fully supported (all 104 characters each, with separate
@@ -152,9 +151,8 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
 | `status` | install state + progress per script |
-| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--style half\|quad\|braille`, `--front`/`--back` ms |
-| `glyphtest [glyph]` | preview the block-art styles |
-| `imagetest [glyph]` | test real-image rendering |
+| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--front`/`--back` ms |
+| `imagetest [glyph]` | check image rendering here (else the drill uses chafa braille) |
 
 ## How it works
 
@@ -163,7 +161,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
   session in `~/.kanthropic/sessions/`, so multiple windows stay independent).
 - **Rendering** rasterizes the font outline (opentype.js) and emits a **sixel** image inside
   tmux (which stores it in its grid so it survives redraws), an **iTerm2** image standalone,
-  or **block-art** as a universal fallback.
+  or **chafa braille symbol-art** as a universal fallback.
 - **Scheduling** uses real FSRS (`ts-fsrs`); progress lives in `~/.kanthropic/progress.json`,
   shared across all sessions (atomic writes, so concurrent windows never corrupt it).
 - Everything is **reversible** — the status line and hooks are removed cleanly, preserving any
@@ -182,7 +180,7 @@ Your progress (`~/.kanthropic/progress.json`) is kept unless you delete `~/.kant
 
 - **Image shows as garbled text** → images aren't active in that terminal. Enable them (above)
   or `kanthropic config --image off`.
-- **Session shows block-art instead of images** → run `kanthropic config --image on` to force
+- **Session shows chafa braille symbol-art instead of images** → run `kanthropic config --image on` to force
   it (auto-detection can miss when a session is reattached from another window).
 - **Can't scroll Claude's chat in the session** → the session enables `mouse on`; scroll the
   Claude pane with the wheel (hold **Option/Shift** to select text).

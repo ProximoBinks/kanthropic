@@ -20,7 +20,6 @@ import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs"
 import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
-import { renderGlyph, STYLES } from "./bigGlyph.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
@@ -85,33 +84,13 @@ function cmdConfig(flags) {
   if (flags.script) store.config.script = scriptFrom(flags, store.config.script);
   if (flags.front && !isNaN(+flags.front)) store.config.frontMs = +flags.front;
   if (flags.back && !isNaN(+flags.back)) store.config.backMs = +flags.back;
-  if (typeof flags.style === "string" && STYLES.includes(flags.style)) store.config.glyphStyle = flags.style;
   if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) store.config.image = flags.image;
   if (flags.advance === "on" || flags.advance === true) store.config.autoAdvance = true;
   if (flags.advance === "off") store.config.autoAdvance = false;
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
-    + `image=${store.config.image} style=${store.config.glyphStyle} `
-    + `advance=${store.config.autoAdvance ? "on" : "off"} `
+    + `image=${store.config.image} advance=${store.config.autoAdvance ? "on" : "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
-}
-
-function cmdGlyphTest(rest) {
-  const ch = rest.find((a) => !a.startsWith("--")) || "ぱ";
-  // Size to the real window so this matches what the drill will render: split
-  // the available height across the three styles, use (almost) the full width.
-  const cols = Math.min((stdout.columns || 70) - 2, 48);
-  const rows = Math.max(6, Math.min(14, Math.floor(((stdout.rows || 40) - 8) / 3)));
-  stdout.write(`\n${accent("glyphtest")} — same glyph (${bold(ch)}) in each style at your `
-    + `window size (${cols}×${rows} per style). Tell me which is most legible.\n`);
-  const labels = { half: "A · half-block", quad: "B · quadrant", braille: "C · braille" };
-  for (const style of STYLES) {
-    stdout.write(`\n${bold(labels[style])}\n`);
-    const lines = renderGlyph(ch, rows, cols, style);
-    stdout.write(accent((lines || ["(no font found)"]).join("\n")) + "\n");
-  }
-  stdout.write(`\n${dim("D · plain (your terminal font):")} ${ch}\n`);
-  stdout.write(dim(`\nSet one with:  kanthropic config --style ${STYLES.join("|")}\n`));
 }
 
 async function cmdImageTest(rest) {
@@ -160,9 +139,8 @@ function help() {
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
-    + `  ${bold("config")} [--style q]   set script / glyph style (half|quad|braille) / timing\n`
-    + `  ${bold("glyphtest")} [glyph]    show a glyph in every block style\n`
-    + `  ${bold("imagetest")} [glyph]    test real-image rendering (iTerm2/Sixel terminals)\n`
+    + `  ${bold("config")} [--image m]   set script / image mode (on|off|auto) / timing\n`
+    + `  ${bold("imagetest")} [glyph]    test image rendering here (else it uses chafa braille)\n`
     + `  ${bold("preview")}              print a few sample ambient lines\n\n`
     + dim("  options: --script hiragana|katakana  --count N  --front <ms>  --back <ms>\n\n"));
 }
@@ -222,7 +200,6 @@ async function main() {
     }
     case "status": cmdStatus(); break;
     case "config": cmdConfig(flags); break;
-    case "glyphtest": cmdGlyphTest(rest); break;
     case "imagetest": await cmdImageTest(rest); break;
     case "preview": cmdPreview(flags); break;
     case undefined:

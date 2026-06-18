@@ -14,8 +14,8 @@ import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
-import { bigGlyph } from "./bigGlyph.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
+import { glyphChafa } from "./glyphChafa.mjs";
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -136,9 +136,13 @@ export async function runDrill(opts = {}) {
         }
       }
       if (!drew) {
-        const art = bigGlyph(next.glyph, renderRows, maxW, store.config.glyphStyle);
-        const artLines = art || [c.bold(next.glyph)];
-        const glyphBlock = art ? c.accent(center(artLines, cols)) : center(artLines, cols);
+        // No image support → chafa braille symbol-art (falls back to the plain
+        // character if chafa can't render this glyph).
+        let lines = null;
+        try { lines = await glyphChafa(next.glyph, renderRows, maxW, { symbols: "braille" }); }
+        catch { lines = null; }
+        const artLines = lines && lines.length ? lines : [c.bold(next.glyph)];
+        const glyphBlock = c.accent(center(artLines, cols));
         const topPad = Math.max(0, Math.floor((availRows - artLines.length) / 2));
         const botPad = Math.max(0, availRows - artLines.length - topPad);
         stdout.write("\n".repeat(topPad));
