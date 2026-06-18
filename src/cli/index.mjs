@@ -181,7 +181,10 @@ function cmdSetup() {
     + `  1. Crisp images (VS Code / Antigravity): set ${bold('"terminal.integrated.enableImages": true')},\n`
     + `     then ${bold("Developer: Reload Window")}, then open a new terminal.\n`
     + `  2. Start it:  ${bold("kanthropic session")}\n`
-    + dim(`     (No image support? It still works — falls back to chafa braille.)\n\n`));
+    + dim(`     (No image support? It still works — falls back to chafa braille.)\n\n`)
+    + `${bold("Leaving the session:")}\n`
+    + `  • Step away (keep it running):  ${bold("Ctrl-b")} then ${bold("d")}  ${dim("(detach → `kanthropic session` to return)")}\n`
+    + `  • End it for good:  quit Claude (${bold("Ctrl-C")} / ${bold("/exit")}), then type ${bold("exit")}\n\n`);
 }
 
 function cmdPreview(flags) {

@@ -112,9 +112,26 @@ kanthropic session            # opens tmux: Claude on top, kana pane pops up whi
 kanthropic session --resume   # forwards any args to claude (resume a conversation, etc.)
 ```
 Submit a prompt to Claude → the kana pane opens below and focus jumps to it → type rōmaji →
-when Claude finishes, the pane closes and you're back in Claude. Detach with `Ctrl-b` then `d`;
-re-run `kanthropic session` to reattach. Scroll Claude's chat with the **mouse wheel** (hold
-**Option/Shift** to select text).
+when Claude finishes, the pane closes and you're back in Claude. Scroll Claude's chat with the
+**mouse wheel** (hold **Option/Shift** to select text).
+
+### Leaving & coming back
+
+The session runs in the background (a tmux server), so it keeps going even after you close the
+terminal.
+
+| You want to… | Do this |
+| --- | --- |
+| **Step away but keep it running** | **`Ctrl-b` then `d`** (detach). Come back with `kanthropic session`. |
+| **Come back to it** | `kanthropic session` (same name) — reattaches to the running session |
+| **Quit Claude** (but stay in the session) | `Ctrl-C` a couple times, or type `/exit` in Claude |
+| **End the session for good** | quit Claude, then type **`exit`** in the shell (closes the pane → ends the session) |
+
+> ⚠️ `exit` **ends** the session (and the running Claude). If you just want to step away, **detach**
+> with `Ctrl-b d` instead — that keeps everything running.
+
+**After a reboot** the tmux session is gone (it lives in RAM), but your **Claude conversation is
+saved** — bring it back with `kanthropic session --resume`. Your kana progress is always on disk.
 
 **Run several windows at once** — give each session a name:
 ```sh
