@@ -60,8 +60,10 @@ async function glyphArt(glyph, renderer, cellPx, rows, cols) {
 
 /** @param {{ script: import("../data/kana.mjs").Script }} opts */
 export async function runLearn(opts) {
-  const script = opts.script;
-  const other = script === "hiragana" ? "katakana" : "hiragana";
+  // `script`/`other` are mutable so `s` can swap scripts without leaving the
+  // menu. The row layout (rowsFor) is the same for both scripts.
+  let script = opts.script;
+  let other = script === "hiragana" ? "katakana" : "hiragana";
   const m0 = load(); if (ensureLearned(m0)) save(m0); // existing cards count as learned
   const renderer = pickRenderer(load().config.image || "auto");
   const cellPx = renderer === "sixel" ? (await probeCellHeight()) || 20 : 20;
@@ -94,10 +96,18 @@ export async function runLearn(opts) {
       });
       stdout.write(`\n  ${c.dim(`${masteredRows}/${rows.length} rows mastered`)}  ${c.dim("·")}  `
         + `${c.green("✓")} ${c.dim("mastered")} ${c.accent("◐")} ${c.dim("learning")} ${c.dim("· new")}\n`);
-      stdout.write(`  ${c.bold("number")} study · ${c.bold("-number")} reset row · ${c.bold("q")} quit\n  → `);
+      stdout.write(`  ${c.bold("number")} study · ${c.bold("-number")} reset row · `
+        + `${c.bold("s")} switch to ${other} · ${c.bold("q")} quit\n  → `);
 
       const sel = (await reader.next(""))?.trim().toLowerCase();
       if (sel === null || sel === "q" || sel === "quit") break;
+      // `s` (or naming the script) swaps without leaving the menu.
+      if (sel === "s" || sel === "h" || sel === "k" || sel === other) {
+        script = sel === "h" || sel === "hiragana" ? "hiragana"
+          : sel === "k" || sel === "katakana" ? "katakana" : other;
+        other = script === "hiragana" ? "katakana" : "hiragana";
+        continue;
+      }
       // `-N` resets row N: forget its cards AND pull it out of the practice
       // pool, so the row goes back to "· new" and the icon reflects that.
       if (sel.startsWith("-")) {

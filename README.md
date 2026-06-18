@@ -154,7 +154,8 @@ you've already learned — so you're never ambushed by a character you haven't s
 The row list reflects your **actual** mastery, drawn from your FSRS deck (so it updates as you
 drill anything): `✓` mastered (every character in the row at FSRS *Review*), `◐ m/n` learning
 (some progress), `·` new. Type `-N` to **reset row N** — forget its cards and pull it out of the
-pool, so it goes back to `· new`.
+pool, so it goes back to `· new`. Press `s` to **switch between hiragana and katakana** without
+leaving the menu (or start on one with `kanthropic learn --script katakana`).
 
 **Practice what you've learned (any terminal window):**
 ```sh
