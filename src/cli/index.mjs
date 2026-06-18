@@ -19,7 +19,6 @@ import { pickNext } from "../core/ambient.mjs";
 import { install, uninstall, isInstalled } from "../install/install.mjs";
 import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
 import { getFont } from "./font.mjs";
-import { runStudy } from "./study.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession } from "./session.mjs";
 import { runLearn } from "./learn.mjs";
@@ -210,8 +209,7 @@ function help() {
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
     + `  ${bold("learn")} [--script k]   learn kana from zero, row by row (image + mnemonic)\n`
     + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
-    + `  ${bold("drill")} [--script k]   endless kana input box for a side pane (reacts to Claude)\n`
-    + `  ${bold("study")} [--script k]   typed, scored session — run at the idle prompt\n`
+    + `  ${bold("drill")} [--count N]    practice your learned kana (endless, or N for a scored session)\n`
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
@@ -243,16 +241,17 @@ async function main() {
         + dim("(Your progress is kept.)\n"));
       break;
     }
-    case "study":
-      await runStudy({ script: scriptFrom(flags, store.config.script), count: flags.count ? +flags.count : undefined });
-      break;
     case "learn":
       await runLearn({ script: scriptFrom(flags, store.config.script) });
       break;
     case "drill":
       // Pass a script only when --script is explicit; otherwise let the drill
       // resolve it (auto-advance hiragana → katakana once hiragana is mastered).
-      await runDrill({ script: flags.script ? scriptFrom(flags, "hiragana") : undefined });
+      // --count N runs a bounded, scored session (the old `study`).
+      await runDrill({
+        script: flags.script ? scriptFrom(flags, "hiragana") : undefined,
+        count: flags.count ? +flags.count : undefined,
+      });
       break;
     case "session": {
       // `session [name] [claude args]` — a leading non-flag token names the

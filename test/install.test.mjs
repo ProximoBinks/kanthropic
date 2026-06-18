@@ -54,10 +54,10 @@ describe("install / uninstall reversibility", () => {
 
   it("keeps learning progress across uninstall", () => {
     run(home, "install");
-    // seed a card via a one-card piped drill
-    execFileSync("node", [CLI, "study", "--script", "hiragana", "--count", "1"], {
+    // seed progress via learn mode (study row 1, then quit)
+    execFileSync("node", [CLI, "learn", "--script", "hiragana"], {
       env: { ...process.env, HOME: home, USERPROFILE: home },
-      input: "a\n", encoding: "utf8",
+      input: "1\n\n\n\n\n\n\nq\n", encoding: "utf8",
     });
     const progress = join(home, ".kanthropic", "progress.json");
     expect(existsSync(progress)).toBe(true);

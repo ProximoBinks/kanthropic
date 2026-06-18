@@ -136,19 +136,29 @@ saved** — bring it back with `kanthropic session --resume`. Your kana progress
 **Run several windows at once** — give each session a name:
 ```sh
 kanthropic session work       # → tmux session "kanthropic-work"
-kanthropic session study      # → a second, independent session
+kanthropic session personal   # → a second, independent session
 ```
 Each window gets its **own** Claude pane and its **own** kana pop-up — they open and close
 independently. Your FSRS progress is **shared** across them (one unified schedule in
 `~/.kanthropic/progress.json`). Pass claude args after the name: `kanthropic session work --resume`.
 List sessions with `tmux ls`.
 
-**Practice on its own (any terminal window):**
+**Learn new kana first (any terminal window):**
+```sh
+kanthropic learn              # row-by-row: big image + rōmaji + hira↔kata + a mnemonic
+```
+`learn` is the **only** place new characters enter your rotation. Pick a row, walk it, and it's
+added to your practice pool; `-N` un-learns a row to pull it back out. Everything else
+(`drill`, the session pane) only reinforces what you've already learned — so you're never
+ambushed by a character you haven't seen.
+
+**Practice what you've learned (any terminal window):**
 ```sh
 kanthropic drill              # endless flashcards, image rendering, FSRS-scored
-kanthropic study              # a fixed ~25-card session with a recap
+kanthropic drill --count 25   # a fixed 25-card session ending in a recap
 kanthropic drill --script katakana
 ```
+When you're caught up (nothing due), the drill nudges you back to `kanthropic learn` for more.
 
 **Check / tune:**
 ```sh
@@ -172,8 +182,8 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `setup` | install the status line + hooks, then print the environment check |
 | `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
-| `drill [--script k]` | endless image flashcards, FSRS-scored |
-| `study [--script k] [--count N]` | a fixed scored session with a recap |
+| `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool |
+| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap |
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
 | `status` | install state + progress per script |

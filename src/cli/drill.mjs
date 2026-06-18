@@ -56,8 +56,11 @@ export function resolveScript(store, explicit) {
   return s;
 }
 
-/** @param {{ script?: import("../data/kana.mjs").Script }} [opts] */
+/** @param {{ script?: import("../data/kana.mjs").Script, count?: number }} [opts]
+ *  `count` runs a bounded session of N cards ending in a recap (the old
+ *  `study`); omitted runs the endless ambient drill. */
 export async function runDrill(opts = {}) {
+  const limit = typeof opts.count === "number" && opts.count > 0 ? opts.count : 0;
   const store0 = load();
   if (ensureLearned(store0)) save(store0); // one-time: existing drilled cards count as learned
   const prev = store0.config.script;
@@ -72,6 +75,7 @@ export async function runDrill(opts = {}) {
   const reader = makeLineReader();
   let lastGlyph = null;
   let correct = 0, seen = 0;
+  const missed = [];
   let lastState = readSessionState();
 
   // Soft bell when Claude transitions into thinking — a non-intrusive cue.
@@ -108,12 +112,14 @@ export async function runDrill(opts = {}) {
       // Practice ONLY what's been learned. Empty pool / nothing due → nudge to
       // go learn more, rather than ambushing with an un-learned character.
       if (learnedCount(store, script) === 0) {
+        if (limit) break; // bounded session: nothing to do → go to recap
         if (await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
           `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`])) break;
         continue;
       }
       const pool = practiceablePool(store, script, now);
       if (pool.size === 0) {
+        if (limit) break; // bounded session ran out of due cards → recap
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         if (await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
           more ? `Learn more:  ${c.accent(c.bold("kanthropic learn"))}`
@@ -209,14 +215,26 @@ export async function runDrill(opts = {}) {
       } else {
         // ✗ + reading inline on the same line; brief pause to read it (no second
         // Enter, which would scroll from the spare bottom row).
+        missed.push({ glyph: next.glyph, romaji: entry.romaji });
         stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
         await sleep(1600);
       }
+      if (limit && seen >= limit) break; // bounded session done
     }
   } finally {
     clearInterval(poll);
     stdout.write("\x1b[?25h"); // always restore the cursor on exit
     reader.close();
   }
-  stdout.write("\n" + c.dim(`${correct}/${seen} this run`) + "\n");
+  if (limit) {
+    // Bounded-session recap (the old `study`).
+    const total = correct + missed.length;
+    stdout.write(CLEAR + `\n  ${c.bold("Session complete")} — ${c.green(`${correct}/${total}`)} correct.\n`);
+    if (missed.length) {
+      stdout.write(`  ${c.dim("review: " + missed.map((m) => `${m.glyph}=${m.romaji}`).join("  "))}\n`);
+    }
+    stdout.write("\n");
+  } else {
+    stdout.write("\n" + c.dim(`${correct}/${seen} this run`) + "\n");
+  }
 }

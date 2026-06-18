@@ -4,7 +4,7 @@
  * Pick a row (a / ka / sa / … plus dakuten and yōon); for each character it
  * shows the glyph as a big image, the rōmaji, its hiragana↔katakana partner,
  * and an original shape mnemonic. Learned characters are recorded so the row
- * menu shows your progress; the drill/study then reinforce them with FSRS.
+ * menu shows your progress; the drill then reinforces them with FSRS.
  */
 import { stdout } from "node:process";
 import { GROUPS, glyph as glyphOf } from "../data/kana.mjs";
@@ -134,7 +134,7 @@ export async function runLearn(opts) {
       fresh.learned = [...set];
       save(fresh);
       if (!quit) {
-        stdout.write(`\n  ${c.green("✓ row complete!")} ${c.dim("Practice it with `kanthropic study` or in a session.")}\n`);
+        stdout.write(`\n  ${c.green("✓ row complete!")} ${c.dim("Practice it with `kanthropic drill` or in a session.")}\n`);
         stdout.write(c.dim("  [Enter] back to menu\n"));
         await reader.next("");
       }
