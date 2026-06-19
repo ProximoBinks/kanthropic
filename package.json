@@ -1,6 +1,6 @@
 {
   "name": "kanthropic",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Learn hiragana & katakana in the dead time while Claude Code is thinking — a kana flashcard pane that pops up beside Claude while it works.",
   "type": "module",
   "bin": {
