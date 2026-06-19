@@ -81,10 +81,14 @@ export async function walkRow({ entries, script, renderer, cellPx, reader }) {
     const e = entries[j];
     const glyph = glyphOf(e, script);
     const partner = script === "hiragana" ? e.kata : e.hira;
-    const artRows = Math.min(16, Math.max(6, (stdout.rows || 24) - 8));
+    // A little top padding so a pane divider (e.g. the session's Claude pane
+    // above) can't clip the top of tall glyphs; trim the art budget by the
+    // same amount so the rōmaji/mnemonic below never scroll off.
+    const TOP_PAD = 2;
+    const artRows = Math.min(16, Math.max(6, (stdout.rows || 24) - 7 - TOP_PAD));
     const cols = stdout.columns || 60;
 
-    stdout.write(CLEAR + "\n");
+    stdout.write(CLEAR + "\n".repeat(TOP_PAD));
     stdout.write(await glyphArt(glyph, renderer, cellPx, artRows, cols) + "\n\n");
     stdout.write(`  ${c.accent(c.bold(glyph))}  ${c.dim("·")}  ${c.bold(e.romaji)}`
       + `   ${c.dim(`(${other}: ${partner})`)}\n`);
