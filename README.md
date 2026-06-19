@@ -169,9 +169,11 @@ terminal-switching:
 - **`n` — learn the next row**: runs the proper learn walk (image + mnemonic) for the next
   un-learned row, then drops you straight back into drilling it. Works from the "nothing learned
   yet" screen too, so you can start from zero inside the drill/session.
-- **`r` — practice anyway**: keep drilling your whole learned set, ignoring the FSRS due timers
-  (handy when you're studying just one row). A `⟳` in the status line marks the mode; it doesn't
-  corrupt your real schedule.
+- **`r` — drill these now**: keep drilling the characters you're **still learning** (not your
+  whole deck), ignoring the FSRS due timers — so a fresh row you just missed doesn't immediately
+  say "caught up", and isn't crowded out by kana you already know. Learning the next row with
+  **`n`** turns this on automatically, and it **auto-stops** once you've mastered the set. A `⟳`
+  in the status line marks the mode; your real spaced-repetition schedule isn't affected.
 
 **Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
 katakana without restarting — this works in the **session pane** too, and persists as your
@@ -202,7 +204,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
 | `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool. In the menu: `N` study row · `-N` reset row · `s` switch script |
-| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap. At the prompt: `/h` `/k` switch script. When caught up: `n` learn next row · `r` practice anyway |
+| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap. At the prompt: `/h` `/k` switch script. When caught up: `n` learn next row · `r` drill what you're still learning |
 | `reset [--script k] [--yes]` | wipe FSRS progress + the learned pool for a clean slate (both scripts unless `--script`); asks before deleting |
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureLearned, learnedCount, practiceablePool, learnedSet, isMastered, resetGlyphs } from "../src/core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
 
 const NOW = 1_000_000_000_000;
@@ -30,6 +30,17 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
     expect(learnedCount(store, "hiragana")).toBe(3);
     // learnedSet ignores due dates entirely (the "practice anyway" pool)
     expect([...learnedSet(store, "hiragana")].sort()).toEqual(["あ", "い", "う"]);
+  });
+
+  it("unmasteredPool = learned glyphs not yet at FSRS Review (the focus set)", () => {
+    const store = { learned: ["あ", "い", "う", "え"], cards: {
+      "あ": { seen: 9, state: 2 },           // mastered → excluded
+      "い": { seen: 2, state: 1 },           // learning → focus
+      "う": { seen: 1, state: 0 },           // new-ish → focus
+      // え: learned, no card → never drilled → focus
+      "か": { seen: 2, state: 1 },           // learning but NOT learned → excluded
+    } };
+    expect([...unmasteredPool(store, "hiragana")].sort()).toEqual(["い", "う", "え"]);
   });
 
   it("pickNext with a pool only returns glyphs from that pool", () => {

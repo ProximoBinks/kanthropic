@@ -72,6 +72,24 @@ export function learnedSet(store, script) {
 }
 
 /**
+ * Learned glyphs you haven't mastered yet (FSRS state < Review). This is the
+ * "still learning" focus set: when you press "practice anyway" right after
+ * learning a new row, you drill just these — not the whole deck — so the
+ * characters you already know don't crowd out the new ones.
+ * Empty ⇒ everything learned is mastered.
+ * @returns {Set<string>}
+ */
+export function unmasteredPool(store, script) {
+  const set = new Set(store.learned);
+  const out = new Set();
+  for (const e of ENTRIES) {
+    const g = glyphOf(e, script);
+    if (set.has(g) && !isMastered(store.cards[g])) out.add(g);
+  }
+  return out;
+}
+
+/**
  * Glyphs of `script` that are learned AND worth practicing now — never drilled
  * (new) or due for review. Empty ⇒ you're caught up.
  * @returns {Set<string>}

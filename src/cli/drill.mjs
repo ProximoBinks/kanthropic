@@ -12,7 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
-import { ensureLearned, learnedCount, practiceablePool, learnedSet, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, unmasteredPool, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { walkRow, nextUnlearnedRow } from "./learn.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -93,14 +93,14 @@ export async function runDrill(opts = {}) {
   // "learn" ([n], when `allowLearnNext`), "cram" ([r], when `allowCram`), or
   // "hiragana"/"katakana" if the user typed /h · /k to switch script.
   const plainLen = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
-  async function messageScreen(lines, { allowCram = false, allowLearnNext = false } = {}) {
+  async function messageScreen(lines, { allowCram = false, allowLearnNext = false, cramLabel = "practice anyway" } = {}) {
     const rows = stdout.rows || 16, cols = stdout.columns || 40;
     stdout.write("\x1b[?25l" + CLEAR);
     stdout.write("\n".repeat(Math.max(0, (rows - lines.length - 3) >> 1)));
     for (const l of lines) stdout.write(" ".repeat(Math.max(0, (cols - plainLen(l)) >> 1)) + l + "\n");
     const parts = [];
     if (allowLearnNext) parts.push("[n] learn next row");
-    if (allowCram) parts.push("[r] practice anyway");
+    if (allowCram) parts.push(`[r] ${cramLabel}`);
     parts.push("[q] quit");
     const foot = c.dim(parts.join(" · "));
     stdout.write("\n" + " ".repeat(Math.max(0, (cols - plainLen(foot)) >> 1)) + foot + "\n");
@@ -133,7 +133,9 @@ export async function runDrill(opts = {}) {
         if (action === "quit") return true;
         if (action === "learn") {
           const row = nextUnlearnedRow(load(), script);
-          if (row) await walkRow({ entries: row, script, renderer, cellPx, reader });
+          // Drill the row you just learned right away (focus mode), even after
+          // you miss them and FSRS would otherwise schedule them out.
+          if (row) { await walkRow({ entries: row, script, renderer, cellPx, reader }); cram = true; }
         } else if (action === "cram") cram = true; // ignore due dates from here on
         else if (action === "hiragana" || action === "katakana") swap(action);
         return false;
@@ -147,16 +149,34 @@ export async function runDrill(opts = {}) {
         if (await handle(action)) break;
         continue;
       }
-      // `cram` keeps drilling the whole learned pool even when nothing is due.
-      const pool = cram ? learnedSet(store, script) : practiceablePool(store, script, now);
+      // Focus mode (`cram`): keep drilling the characters you're still learning
+      // even when nothing is due — ignoring FSRS timers — so a fresh row you
+      // just missed doesn't immediately say "caught up" and isn't crowded out
+      // by characters you already know. It auto-exits once you've mastered them.
+      let pool;
+      if (cram) {
+        pool = unmasteredPool(store, script);
+        if (pool.size === 0) { cram = false; pool = practiceablePool(store, script, now); }
+      } else {
+        pool = practiceablePool(store, script, now);
+      }
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
-        const action = await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
-          more ? `Press ${c.accent(c.bold("n"))} to learn the next row, or keep practicing`
-               : c.accent(`🎉 You've learned every ${script}!`),
-          "", c.dim("/h · /k switch script")],
-          { allowCram: true, allowLearnNext: more });
+        const stillLearning = unmasteredPool(store, script).size;
+        const lines = [`${c.green("✓")}  Caught up — nothing due right now`, ""];
+        if (stillLearning > 0)
+          lines.push(c.dim(`Still learning ${stillLearning} — drill just those below`));
+        else if (!more)
+          lines.push(c.accent(`🎉 You've learned every ${script}!`));
+        else
+          lines.push(c.dim("Learn the next row to keep going"));
+        lines.push("", c.dim("/h · /k switch script"));
+        const action = await messageScreen(lines, {
+          allowCram: stillLearning > 0, // only offer when there's something to focus on
+          allowLearnNext: more,
+          cramLabel: "drill these now",
+        });
         if (await handle(action)) break;
         continue;
       }
