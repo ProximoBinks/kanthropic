@@ -58,6 +58,51 @@ async function glyphArt(glyph, renderer, cellPx, rows, cols) {
   return c.accent(c.bold(" ".repeat(Math.max(0, (cols >> 1) - 1)) + glyph));
 }
 
+/** The first row not yet fully in the learned pool, or null if all are learned.
+ *  @returns {import("../data/kana.mjs").Entry[] | null} that row's entries */
+export function nextUnlearnedRow(store, script) {
+  const learned = new Set(store.learned);
+  for (const r of rowsFor(script)) {
+    if (!r.entries.every((e) => learned.has(glyphOf(e, script)))) return r.entries;
+  }
+  return null;
+}
+
+/**
+ * Walk one row's characters (big image + rōmaji + partner + mnemonic) and mark
+ * them learned. Shared by `runLearn` and the drill's inline "learn next row",
+ * so it borrows the caller's reader/renderer instead of opening its own.
+ * @returns {Promise<boolean>} true if the row was finished (not bailed with q)
+ */
+export async function walkRow({ entries, script, renderer, cellPx, reader }) {
+  const other = script === "hiragana" ? "katakana" : "hiragana";
+  let quit = false;
+  for (let j = 0; j < entries.length && !quit; j++) {
+    const e = entries[j];
+    const glyph = glyphOf(e, script);
+    const partner = script === "hiragana" ? e.kata : e.hira;
+    const artRows = Math.min(16, Math.max(6, (stdout.rows || 24) - 8));
+    const cols = stdout.columns || 60;
+
+    stdout.write(CLEAR + "\n");
+    stdout.write(await glyphArt(glyph, renderer, cellPx, artRows, cols) + "\n\n");
+    stdout.write(`  ${c.accent(c.bold(glyph))}  ${c.dim("·")}  ${c.bold(e.romaji)}`
+      + `   ${c.dim(`(${other}: ${partner})`)}\n`);
+    stdout.write(`  ${mnemonicFor(e, glyph)}\n\n`);
+    stdout.write(c.dim(`  ${j + 1}/${entries.length}   [Enter] next  ·  [q] stop\n`));
+
+    const k = (await reader.next(""))?.trim().toLowerCase();
+    if (k === null || k === "q") quit = true;
+  }
+  // Selecting a row commits the whole row to the pool (drilling refines it).
+  const fresh = load();
+  const set = new Set(fresh.learned);
+  for (const e of entries) set.add(glyphOf(e, script));
+  fresh.learned = [...set];
+  save(fresh);
+  return !quit;
+}
+
 /** @param {{ script: import("../data/kana.mjs").Script }} opts */
 export async function runLearn(opts) {
   // `script`/`other` are mutable so `s` can swap scripts without leaving the
@@ -123,33 +168,8 @@ export async function runLearn(opts) {
       if (!(idx >= 0 && idx < rows.length)) continue;
 
       // ── walk the row ──────────────────────────────────────────────────
-      const entries = rows[idx].entries;
-      let quit = false;
-      for (let j = 0; j < entries.length && !quit; j++) {
-        const e = entries[j];
-        const glyph = glyphOf(e, script);
-        const partner = script === "hiragana" ? e.kata : e.hira;
-        const artRows = Math.min(16, Math.max(6, (stdout.rows || 24) - 8));
-        const cols = stdout.columns || 60;
-
-        stdout.write(CLEAR + "\n");
-        stdout.write(await glyphArt(glyph, renderer, cellPx, artRows, cols) + "\n\n");
-        stdout.write(`  ${c.accent(c.bold(glyph))}  ${c.dim("·")}  ${c.bold(e.romaji)}`
-          + `   ${c.dim(`(${other}: ${partner})`)}\n`);
-        stdout.write(`  ${mnemonicFor(e, glyph)}\n\n`);
-        stdout.write(c.dim(`  ${j + 1}/${entries.length}   [Enter] next  ·  [q] back to menu\n`));
-
-        const k = (await reader.next(""))?.trim().toLowerCase();
-        if (k === null || k === "q") quit = true;
-      }
-
-      // mark the row learned
-      const fresh = load();
-      const set = new Set(fresh.learned);
-      for (const e of entries) set.add(glyphOf(e, script));
-      fresh.learned = [...set];
-      save(fresh);
-      if (!quit) {
+      const completed = await walkRow({ entries: rows[idx].entries, script, renderer, cellPx, reader });
+      if (completed) {
         stdout.write(`\n  ${c.green("✓ row complete!")} ${c.dim("Practice it with `kanthropic drill` or in a session.")}\n`);
         stdout.write(c.dim("  [Enter] back to menu\n"));
         await reader.next("");

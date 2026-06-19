@@ -13,6 +13,7 @@ import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
 import { ensureLearned, learnedCount, practiceablePool, learnedSet, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { walkRow, nextUnlearnedRow } from "./learn.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
@@ -89,21 +90,27 @@ export async function runDrill(opts = {}) {
   }, 1500);
 
   // A centered message + wait. Returns the chosen action: "quit", "recheck",
-  // or (when `allowCram`) "cram" if the user pressed `r` to practice anyway.
+  // "learn" ([n], when `allowLearnNext`), "cram" ([r], when `allowCram`), or
+  // "hiragana"/"katakana" if the user typed /h · /k to switch script.
   const plainLen = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
-  async function messageScreen(lines, { allowCram = false } = {}) {
+  async function messageScreen(lines, { allowCram = false, allowLearnNext = false } = {}) {
     const rows = stdout.rows || 16, cols = stdout.columns || 40;
     stdout.write("\x1b[?25l" + CLEAR);
     stdout.write("\n".repeat(Math.max(0, (rows - lines.length - 3) >> 1)));
     for (const l of lines) stdout.write(" ".repeat(Math.max(0, (cols - plainLen(l)) >> 1)) + l + "\n");
-    const foot = c.dim(allowCram
-      ? "[Enter] re-check · [r] practice anyway · [q] quit"
-      : "[Enter] re-check · [q] quit");
+    const parts = [];
+    if (allowLearnNext) parts.push("[n] learn next row");
+    if (allowCram) parts.push("[r] practice anyway");
+    parts.push("[q] quit");
+    const foot = c.dim(parts.join(" · "));
     stdout.write("\n" + " ".repeat(Math.max(0, (cols - plainLen(foot)) >> 1)) + foot + "\n");
     stdout.write(`\x1b[${Math.max(2, rows - 1)};1H\x1b[?25h`);
     const k = (await reader.next(""))?.trim().toLowerCase();
     if (k === null || k === "q") return "quit";
+    if (allowLearnNext && k === "n") return "learn";
     if (allowCram && k === "r") return "cram";
+    if (/^\/(h|hira|hiragana)$/.test(k)) return "hiragana";
+    if (/^\/(k|kata|katakana)$/.test(k)) return "katakana";
     return "recheck";
   }
 
@@ -119,11 +126,25 @@ export async function runDrill(opts = {}) {
       const now = Date.now();
       // Practice ONLY what's been learned. Empty pool / nothing due → nudge to
       // go learn more, rather than ambushing with an un-learned character.
+      // Act on a messageScreen result that isn't quit/recheck. Returns true to
+      // break the drill loop. `swap` persists so the session pane keeps it.
+      const swap = (s) => { script = s; lastGlyph = null; store.config.script = s; save(store); };
+      const handle = async (action) => {
+        if (action === "quit") return true;
+        if (action === "learn") {
+          const row = nextUnlearnedRow(load(), script);
+          if (row) await walkRow({ entries: row, script, renderer, cellPx, reader });
+        } else if (action === "cram") cram = true; // ignore due dates from here on
+        else if (action === "hiragana" || action === "katakana") swap(action);
+        return false;
+      };
+
       if (learnedCount(store, script) === 0) {
         if (limit) break; // bounded session: nothing to do → go to recap
-        if (await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
-          `Open a terminal and run  ${c.accent(c.bold("kanthropic learn"))}`,
-          "", c.dim("(or type /h · /k to switch script)")]) === "quit") break;
+        const action = await messageScreen([`${c.dim("📖")}  No ${script} learned yet`, "",
+          `Press ${c.accent(c.bold("n"))} to learn your first row`,
+          "", c.dim("/h · /k switch script")], { allowLearnNext: true });
+        if (await handle(action)) break;
         continue;
       }
       // `cram` keeps drilling the whole learned pool even when nothing is due.
@@ -132,12 +153,11 @@ export async function runDrill(opts = {}) {
         if (limit) break; // bounded session ran out of due cards → recap
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         const action = await messageScreen([`${c.green("✓")}  Caught up — nothing due right now`, "",
-          more ? `Learn more:  ${c.accent(c.bold("kanthropic learn"))}`
+          more ? `Press ${c.accent(c.bold("n"))} to learn the next row, or keep practicing`
                : c.accent(`🎉 You've learned every ${script}!`),
-          "", c.dim("[r] keep practicing this set anyway · /h /k switch script")],
-          { allowCram: true });
-        if (action === "quit") break;
-        if (action === "cram") cram = true; // ignore due dates from here on
+          "", c.dim("/h · /k switch script")],
+          { allowCram: true, allowLearnNext: more });
+        if (await handle(action)) break;
         continue;
       }
       const next = pickNext(script, store.cards, lastGlyph, now, undefined, pool);
