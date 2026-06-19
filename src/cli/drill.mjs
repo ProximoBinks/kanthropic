@@ -12,7 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
-import { ensureLearned, learnedCount, practiceablePool, unmasteredPool, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { walkRow, nextUnlearnedRow } from "./learn.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -79,7 +79,10 @@ export async function runDrill(opts = {}) {
   let lastGlyph = null;
   let correct = 0, seen = 0;
   const missed = [];
-  let cram = false; // "practice anyway": drill the whole learned pool, ignoring due dates
+  // Practice mode when nothing is due. "normal" = follow FSRS due dates;
+  // "focus" = drill only what you're still learning (ignores due, auto-exits
+  // when mastered); "review" = drill the whole learned set to self-test.
+  let mode = "normal";
   let lastState = readSessionState();
 
   // Soft bell when Claude transitions into thinking — a non-intrusive cue.
@@ -135,9 +138,12 @@ export async function runDrill(opts = {}) {
           const row = nextUnlearnedRow(load(), script);
           // Drill the row you just learned right away (focus mode), even after
           // you miss them and FSRS would otherwise schedule them out.
-          if (row) { await walkRow({ entries: row, script, renderer, cellPx, reader }); cram = true; }
-        } else if (action === "cram") cram = true; // ignore due dates from here on
-        else if (action === "hiragana" || action === "katakana") swap(action);
+          if (row) { await walkRow({ entries: row, script, renderer, cellPx, reader }); mode = "focus"; }
+        } else if (action === "cram") {
+          // Same key, context-aware: focus the still-learning set if there is
+          // one, otherwise review the whole learned set (self-test).
+          mode = unmasteredPool(store, script).size ? "focus" : "review";
+        } else if (action === "hiragana" || action === "katakana") swap(action);
         return false;
       };
 
@@ -149,33 +155,33 @@ export async function runDrill(opts = {}) {
         if (await handle(action)) break;
         continue;
       }
-      // Focus mode (`cram`): keep drilling the characters you're still learning
-      // even when nothing is due — ignoring FSRS timers — so a fresh row you
-      // just missed doesn't immediately say "caught up" and isn't crowded out
-      // by characters you already know. It auto-exits once you've mastered them.
+      // Resolve the pool for the active mode. "focus" drills only what you're
+      // still learning (ignores due, auto-exits once mastered); "review" drills
+      // the whole learned set; "normal" follows FSRS due dates.
       let pool;
-      if (cram) {
+      if (mode === "focus") {
         pool = unmasteredPool(store, script);
-        if (pool.size === 0) { cram = false; pool = practiceablePool(store, script, now); }
-      } else {
-        pool = practiceablePool(store, script, now);
+        if (pool.size === 0) mode = "normal"; // mastered the focus set → resume scheduling
       }
+      if (mode === "normal") pool = practiceablePool(store, script, now);
+      else if (mode === "review") pool = learnedSet(store, script);
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         const stillLearning = unmasteredPool(store, script).size;
+        const anyLearned = learnedCount(store, script) > 0;
         const lines = [`${c.green("✓")}  Caught up — nothing due right now`, ""];
         if (stillLearning > 0)
           lines.push(c.dim(`Still learning ${stillLearning} — drill just those below`));
         else if (!more)
           lines.push(c.accent(`🎉 You've learned every ${script}!`));
         else
-          lines.push(c.dim("Learn the next row to keep going"));
+          lines.push(c.dim("Learn the next row, or review what you know"));
         lines.push("", c.dim("/h · /k switch script"));
         const action = await messageScreen(lines, {
-          allowCram: stillLearning > 0, // only offer when there's something to focus on
+          allowCram: anyLearned, // focus the still-learning set, or review all if mastered
           allowLearnNext: more,
-          cramLabel: "drill these now",
+          cramLabel: stillLearning > 0 ? "drill these now" : "review everything",
         });
         if (await handle(action)) break;
         continue;
@@ -251,8 +257,8 @@ export async function runDrill(opts = {}) {
       // auto-answer the next few cards (interactive only — keep piped input).
       if (process.stdin.isTTY) reader.flush();
       // Status (dot + script + score) lives on the prompt line now. A trailing
-      // ⟳ marks "practice anyway" mode (drilling past due dates).
-      const status = `${script}${cram ? " ⟳" : ""} ${correct}/${seen}`;
+      // ⟳ marks focus/review mode (drilling past FSRS due dates).
+      const status = `${script}${mode !== "normal" ? " ⟳" : ""} ${correct}/${seen}`;
       const promptW = [...`○ ${status}  → `].length; // visible width, for the ✓/✗ offset
       const answer = await reader.next(`${dot} ${c.dim(status)}  ${c.dim("→")} `);
       if (answer === null) break; // pane closed
