@@ -20,7 +20,9 @@ import { install, uninstall, isInstalled } from "../install/install.mjs";
 import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
 import { getFont } from "./font.mjs";
 import { runDrill } from "./drill.mjs";
-import { runSession } from "./session.mjs";
+import { runSession, listKanthropicSessions, killKanthropicSessions } from "./session.mjs";
+import { TMUX_SESSION } from "../core/paths.mjs";
+import { makeLineReader } from "./lineReader.mjs";
 import { runLearn } from "./learn.mjs";
 import { runReset } from "./reset.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
@@ -95,6 +97,43 @@ function cmdConfig(flags) {
   stdout.write(`${green("✓")} config: script=${store.config.script} `
     + `image=${store.config.image} advance=${store.config.autoAdvance ? "on" : "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
+}
+
+/** `sessions` — list running kanthropic tmux sessions; `sessions clear` kills
+ *  them all (and cleans their pane files). `--yes`/`-y` skips the prompt. */
+async function cmdSessions(rest) {
+  const verb = rest.find((a) => !a.startsWith("-"));
+  const clearing = ["clear", "clean", "cleanse", "kill"].includes(verb || "");
+  const yes = rest.includes("--yes") || rest.includes("-y");
+  const sessions = listKanthropicSessions();
+
+  if (clearing) {
+    if (!sessions.length) {
+      killKanthropicSessions(); // still tidy up any stale pane files
+      stdout.write(dim("No kanthropic sessions running — nothing to clear.\n"));
+      return;
+    }
+    if (!yes) {
+      const reader = makeLineReader();
+      stdout.write(`This ends ${bold(`${sessions.length} session${sessions.length === 1 ? "" : "s"}`)} `
+        + dim("(and the Claude running in each):\n"));
+      for (const s of sessions) stdout.write(`  • ${s}\n`);
+      const ans = (await reader.next(`Clear all? ${dim("[y/N]")} `))?.trim().toLowerCase();
+      reader.close();
+      if (ans !== "y" && ans !== "yes") { stdout.write(dim("Cancelled.\n")); return; }
+    }
+    const killed = killKanthropicSessions();
+    stdout.write(`${green("✓")} cleared ${bold(`${killed.length} session${killed.length === 1 ? "" : "s"}`)}. `
+      + dim("(Your kana progress and Claude history are kept.)\n"));
+    return;
+  }
+
+  if (!sessions.length) { stdout.write(`\n${dim("No kanthropic sessions running.")}\n`); return; }
+  stdout.write(`\n${accent("kanthropic sessions")}\n`);
+  for (const s of sessions) stdout.write(`  • ${bold(s)}\n`);
+  const first = sessions[0] === TMUX_SESSION ? "" : ` ${sessions[0].slice(TMUX_SESSION.length + 1)}`;
+  stdout.write(dim(`\n  Attach:     kanthropic session${first}\n`)
+    + dim(`  Clear all:  kanthropic sessions clear\n`));
 }
 
 async function cmdImageTest(rest) {
@@ -210,6 +249,7 @@ function help() {
     + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
     + `  ${bold("learn")} [--script k]   learn kana from zero, row by row (image + mnemonic)\n`
     + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
+    + `  ${bold("sessions")} [clear]      list running sessions, or ${bold("clear")} to end them all\n`
     + `  ${bold("drill")} [--count N]    practice your learned kana (endless, or N for a scored session)\n`
     + `  ${bold("reset")} [--script k]   wipe progress for a clean slate (asks first; --yes to skip)\n`
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
@@ -271,6 +311,7 @@ async function main() {
       runSession(sName, cArgs);
       break;
     }
+    case "sessions": await cmdSessions(rest); break;
     case "hooks-install": {
       const r = installHooks();
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }

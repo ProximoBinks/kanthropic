@@ -141,7 +141,14 @@ kanthropic session personal   # → a second, independent session
 Each window gets its **own** Claude pane and its **own** kana pop-up — they open and close
 independently. Your FSRS progress is **shared** across them (one unified schedule in
 `~/.kanthropic/progress.json`). Pass claude args after the name: `kanthropic session work --resume`.
-List sessions with `tmux ls`.
+
+**List or clear sessions:**
+```sh
+kanthropic sessions           # list every running kanthropic session
+kanthropic sessions clear     # end them all at once (asks first; --yes to skip)
+```
+Clearing kills the tmux sessions (and the Claude in each) — your kana progress and Claude
+conversation history are untouched, so `claude --resume` brings a chat back.
 
 **Learn new kana first (any terminal window):**
 ```sh
@@ -211,6 +218,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `setup` | install the status line + hooks, then print the environment check |
 | `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
 | `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
+| `sessions [clear]` | list running kanthropic sessions; `clear` ends them all at once (`--yes` skips the prompt). Your progress and Claude history are kept |
 | `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool. In the menu: `N` study row · `-N` reset row · `s` switch script |
 | `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap. At the prompt: `/h` `/k` switch script. When caught up: `n` learn next row · `r` drill what you're still learning (or review everything once mastered) |
 | `reset [--script k] [--yes]` | wipe FSRS progress + the learned pool for a clean slate (both scripts unless `--script`); asks before deleting |

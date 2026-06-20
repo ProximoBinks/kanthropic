@@ -15,7 +15,8 @@
  * Re-running attaches to the existing session instead of duplicating it.
  */
 import { spawnSync, execFileSync } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { stdout, env } from "node:process";
 import { SESSIONS_DIR, sessionPanePath, TMUX_SESSION } from "../core/paths.mjs";
 
@@ -27,6 +28,36 @@ function tmuxAvailable() {
 function sessionExists(target) {
   try { execFileSync("tmux", ["has-session", "-t", target], { stdio: "ignore" }); return true; }
   catch { return false; }
+}
+
+/** Names of all running tmux sessions that are ours: `kanthropic` or
+ *  `kanthropic-<name>` (the same prefix the hooks treat as a kana session). */
+export function listKanthropicSessions() {
+  let out;
+  try { out = execFileSync("tmux", ["list-sessions", "-F", "#{session_name}"], { encoding: "utf8" }); }
+  catch { return []; } // no tmux server / no sessions
+  return out.split("\n").map((s) => s.trim())
+    .filter((s) => s === TMUX_SESSION || s.startsWith(`${TMUX_SESSION}-`));
+}
+
+/** Remove the per-session `.pane` tracking files (stale once sessions are gone). */
+function cleanSessionFiles() {
+  try {
+    for (const f of readdirSync(SESSIONS_DIR)) {
+      if (f.endsWith(".pane")) rmSync(join(SESSIONS_DIR, f), { force: true });
+    }
+  } catch { /* dir may not exist yet */ }
+}
+
+/** Kill every kanthropic tmux session and clean up their pane files.
+ *  @returns {string[]} the session names that were killed. */
+export function killKanthropicSessions() {
+  const sessions = listKanthropicSessions();
+  for (const s of sessions) {
+    try { execFileSync("tmux", ["kill-session", "-t", s], { stdio: "ignore" }); } catch { /* gone already */ }
+  }
+  cleanSessionFiles();
+  return sessions;
 }
 
 /**
