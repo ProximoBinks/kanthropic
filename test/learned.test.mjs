@@ -55,6 +55,14 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
     expect(pickNext("hiragana", {}, null, NOW, Math.random, new Set())).toBeNull();
   });
 
+  it("pickNext returns null when the only pool glyph is the avoided one", () => {
+    // The hazard behind the drill freeze: a 1-card pool whose sole member is the
+    // last glyph. The drill must NOT pass an avoid glyph when pool.size === 1,
+    // or it would get null → spin forever. This documents why.
+    expect(pickNext("hiragana", {}, "さ", NOW, Math.random, new Set(["さ"]))).toBeNull();
+    expect(pickNext("hiragana", {}, null, NOW, Math.random, new Set(["さ"])).glyph).toBe("さ");
+  });
+
   it("isMastered tracks FSRS Review state (≥ 2)", () => {
     expect(isMastered(undefined)).toBe(false);
     expect(isMastered({ state: 1 })).toBe(false);

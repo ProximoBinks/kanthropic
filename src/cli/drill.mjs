@@ -186,8 +186,13 @@ export async function runDrill(opts = {}) {
         if (await handle(action)) break;
         continue;
       }
-      const next = pickNext(script, store.cards, lastGlyph, now, undefined, pool);
-      if (!next) continue;
+      // Avoid an immediate repeat ONLY when there's something else to show. With
+      // a single-card pool (e.g. the last unmastered char in focus mode, kept
+      // there by a wrong answer), avoiding it makes pickNext return null — and
+      // `continue` would then spin forever without reading input (a freeze).
+      const avoid = pool.size > 1 ? lastGlyph : null;
+      const next = pickNext(script, store.cards, avoid, now, undefined, pool);
+      if (!next) { lastGlyph = null; continue; } // safety net: never spin
       lastGlyph = next.glyph;
       const entry = entryByGlyph(script, next.glyph);
 
