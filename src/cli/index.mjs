@@ -93,9 +93,12 @@ function cmdConfig(flags) {
   if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) store.config.image = flags.image;
   if (flags.advance === "on" || flags.advance === true) store.config.autoAdvance = true;
   if (flags.advance === "off") store.config.autoAdvance = false;
+  if (flags.continuous === "on" || flags.continuous === true) store.config.continuous = true;
+  if (flags.continuous === "off") store.config.continuous = false;
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
     + `image=${store.config.image} advance=${store.config.autoAdvance ? "on" : "off"} `
+    + `continuous=${store.config.continuous ? "on" : "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
 }
 
@@ -255,7 +258,7 @@ function help() {
     + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
     + `  ${bold("hooks-uninstall")}      remove those hooks\n`
     + `  ${bold("status")}               show install state + your progress\n`
-    + `  ${bold("config")} [--image m]   set script / image mode (on|off|auto) / timing\n`
+    + `  ${bold("config")} [--image m]   set script / image / ${bold("--continuous on|off")} (never stop) / timing\n`
     + `  ${bold("imagetest")} [glyph]    test image rendering here (else it uses chafa braille)\n`
     + `  ${bold("preview")}              print a few sample ambient lines\n\n`
     + dim("  options: --script hiragana|katakana  --count N  --front <ms>  --back <ms>\n\n"));

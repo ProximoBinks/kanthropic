@@ -184,6 +184,12 @@ terminal-switching:
   **review everything** — drill the whole learned set to self-test that it all still sticks. A `⟳`
   in the status line marks the mode; your real spaced-repetition schedule isn't affected.
 
+**Never want it to stop?** `kanthropic config --continuous on` turns off the "caught up" break
+entirely: once nothing's due, the drill (and the session pane) rolls straight into the characters
+you're still learning, then your whole learned set, ignoring the due timers — so it just keeps
+going until you've mastered everything or open `kanthropic learn` to add more. The `⟳` shows it's
+running past the schedule; turn it back off with `--continuous off`.
+
 > **What counts as "mastered"?** Each card is scheduled by FSRS — a correct answer grades as
 > *Good*, a wrong one as *Again*. A character is "mastered" once FSRS graduates it past the short
 > learning steps into its **Review** state (in practice, a couple of correct answers in a row). It
@@ -201,6 +207,7 @@ kanthropic status                       # install state + your progress
 kanthropic config --script katakana     # default script
 kanthropic config --image on|auto|off   # image rendering mode
 kanthropic config --advance off         # disable auto-advance (see below)
+kanthropic config --continuous on       # never stop — drill on until you master it
 kanthropic imagetest ば                  # check image rendering here
 kanthropic reset --script hiragana      # wipe a script's progress (asks first; --yes to skip)
 ```
@@ -225,7 +232,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
 | `status` | install state + progress per script |
-| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--front`/`--back` ms |
+| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--continuous on\|off` (never stop at "caught up"), `--front`/`--back` ms |
 | `imagetest [glyph]` | check image rendering here (else the drill uses chafa braille) |
 
 ## How it works

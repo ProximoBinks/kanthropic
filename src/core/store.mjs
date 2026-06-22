@@ -28,7 +28,10 @@ import { KANTHROPIC_DIR, PROGRESS_PATH } from "./paths.mjs";
 // image defaults to "auto": real images where the terminal supports them (sixel
 // inside a sixel-tmux, iTerm2 standalone), falling back to chafa braille
 // symbol-art otherwise — so it looks its best by default and never garbles.
-export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true };
+// continuous: when on, the drill never stops at "caught up" — once nothing is
+// due it rolls straight into drilling what you're still learning, then the whole
+// learned set, ignoring FSRS due timers, until you master it or go add new cards.
+export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true, continuous: false };
 
 /** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[] }} */
 export function emptyStore() {

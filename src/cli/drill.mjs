@@ -167,6 +167,14 @@ export async function runDrill(opts = {}) {
       else if (mode === "review") pool = learnedSet(store, script);
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
+        // Continuous mode: never stop on "caught up". Roll straight into the
+        // still-learning set (focus), then the whole learned set (review),
+        // ignoring due dates — so it drills on until you master it or go add
+        // more. Only the genuinely-empty "nothing learned yet" screen remains.
+        if (store.config.continuous && learnedCount(store, script) > 0) {
+          mode = unmasteredPool(store, script).size ? "focus" : "review";
+          continue;
+        }
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         const stillLearning = unmasteredPool(store, script).size;
         const anyLearned = learnedCount(store, script) > 0;
