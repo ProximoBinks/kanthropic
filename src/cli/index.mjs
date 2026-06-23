@@ -97,7 +97,7 @@ function cmdConfig(flags) {
   if (flags.continuous === "off") store.config.continuous = false;
   if (flags.checkin !== undefined) {
     if (flags.checkin === "off") store.config.checkinEvery = 0;
-    else if (flags.checkin === "on" || flags.checkin === true) store.config.checkinEvery = 20;
+    else if (flags.checkin === "on" || flags.checkin === true) store.config.checkinEvery = 3;
     else if (!isNaN(+flags.checkin)) store.config.checkinEvery = Math.max(0, Math.floor(+flags.checkin));
   }
   save(store);

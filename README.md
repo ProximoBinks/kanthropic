@@ -185,15 +185,15 @@ terminal-switching:
   in the status line marks the mode; your real spaced-repetition schedule isn't affected.
 
 **Never want it to stop?** `kanthropic config --continuous on` turns off the "caught up" break
-entirely: once nothing's due, the drill (and the session pane) keeps going, **interleaving** the
-characters you're still learning with the ones you already know (weighted toward the weak ones)
-so it doesn't get stuck on a single row. The `⟳` shows it's running past the schedule; turn it
+entirely: once nothing's due, the drill (and the session pane) keeps grinding the characters
+you're **still learning** — that same small set on its own — and only widens to your whole
+learned set once they're all mastered. The `⟳` shows it's running past the schedule; turn it
 back off with `--continuous off`.
 
-Whenever it's drilling past the schedule (continuous, or after you press `r`), it **checks in**
-after a clean streak (default 20 in a row, a miss resets it) or ~6 minutes, so it never goes
-mindless — you choose to learn the next set, keep going, or stop. Tune it with `kanthropic config
---checkin 30` (cards between check-ins), or `--checkin off` for truly endless.
+So it isn't an endless grind, it **checks in once you've cleared the set** — each character right
+a few times this run (default 3) — or after ~6 minutes, and asks: learn the next set, keep going,
+or stop. A miss resets that card's count. Make the grind longer or shorter with `kanthropic config
+--checkin 5` (reps per card before it asks), or `--checkin off` for truly endless.
 
 > **What counts as "mastered"?** Each card is scheduled by FSRS — a correct answer grades as
 > *Good*, a wrong one as *Again*. A character only counts as mastered once it has **graduated past
@@ -238,7 +238,7 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 | `install` / `uninstall` | add / remove the kana progress status line |
 | `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
 | `status` | install state + progress per script |
-| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--continuous on\|off` (never stop at "caught up"), `--checkin N` (check-in every N clean, 0=off), `--front`/`--back` ms |
+| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--continuous on\|off` (never stop at "caught up"), `--checkin N` (check-in once each card's right N times, 0=off), `--front`/`--back` ms |
 | `imagetest [glyph]` | check image rendering here (else the drill uses chafa braille) |
 
 ## How it works

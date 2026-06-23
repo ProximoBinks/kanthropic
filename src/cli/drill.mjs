@@ -87,9 +87,10 @@ export async function runDrill(opts = {}) {
   // "focus" = drill only what you're still learning (ignores due, auto-exits
   // when mastered); "review" = drill the whole learned set to self-test.
   let mode = "normal";
-  // Check-in pacing: when drilling past the schedule, pause after a clean streak
-  // or some time, so it isn't mindless. A miss resets the streak.
-  let streak = 0;
+  // Check-in pacing: when grinding past the schedule, pause once you've cleared
+  // the set (each card right `checkinEvery` times this run) — or after a while —
+  // so you can move on. sessionGood = correct reps per glyph this run.
+  const sessionGood = new Map();
   let lastCheckin = Date.now();
   let lastState = readSessionState();
 
@@ -173,21 +174,15 @@ export async function runDrill(opts = {}) {
         if (pool.size === 0) mode = "normal"; // mastered the focus set → resume scheduling
       }
       if (mode === "normal") pool = practiceablePool(store, script, now);
-      else if (mode === "review") {
-        // Mostly the still-learning set, with previously learned cards mixed in
-        // for retention — so it doesn't get stuck drilling one row forever. When
-        // everything's mastered, focus is empty so it just reviews the whole set.
-        const focus = unmasteredPool(store, script);
-        pool = (focus.size && Math.random() < 0.7) ? focus : learnedSet(store, script);
-      }
+      else if (mode === "review") pool = learnedSet(store, script);
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
-        // Continuous mode: never stop on "caught up". Roll straight into the
-        // still-learning set (focus), then the whole learned set (review),
-        // ignoring due dates — so it drills on until you master it or go add
-        // more. Only the genuinely-empty "nothing learned yet" screen remains.
+        // Continuous mode: never stop on "caught up". Grind the still-learning
+        // set (focus) on its own — the same small set until you're comfortable —
+        // and only widen to the whole learned set (review) once it's all
+        // mastered. The set-completion check-in below ends each grind.
         if (store.config.continuous && learnedCount(store, script) > 0) {
-          mode = "review"; // interleave the whole set (weak cards weighted), not one row
+          mode = unmasteredPool(store, script).size ? "focus" : "review";
           continue;
         }
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
@@ -307,32 +302,38 @@ export async function runDrill(opts = {}) {
       seen++;
       const aw = [...answer].length;
       if (ok) {
-        correct++; streak++;
+        correct++;
+        sessionGood.set(next.glyph, (sessionGood.get(next.glyph) || 0) + 1);
         // ✓ inline, just after your answer (Enter dropped the cursor a line).
         stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.green("✓")}\x1b[B\r`);
         await sleep(450);
       } else {
         // ✗ + reading inline on the same line; brief pause to read it (no second
         // Enter, which would scroll from the spare bottom row).
-        streak = 0;
+        sessionGood.set(next.glyph, 0); // a miss resets that card's session progress
         missed.push({ glyph: next.glyph, romaji: entry.romaji });
         stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
         await sleep(1600);
       }
       if (limit && seen >= limit) break; // bounded session done
 
-      // Check-in: when drilling past the schedule (focus/review), pause after a
-      // clean streak or ~6 min so it isn't mindless — choose to learn the next
-      // set, keep going, or stop. `checkinEvery` 0 disables it.
-      const every = store.config.checkinEvery | 0;
-      if (every > 0 && mode !== "normal"
-          && (streak >= every || Date.now() - lastCheckin >= CHECKIN_MS)) {
-        streak = 0; lastCheckin = Date.now();
+      // Check-in: when grinding past the schedule (focus/review), pause once
+      // you've CLEARED the set — every card in it right `checkinEvery` times this
+      // run — or after ~6 min. Then choose to learn the next set, keep going, or
+      // stop. `checkinEvery` 0 disables it. A small focus set clears fast; a big
+      // review set rarely fully clears, so the time fallback paces it.
+      const passes = store.config.checkinEvery | 0;
+      const setCleared = passes > 0 && pool.size > 0
+        && [...pool].every((g) => (sessionGood.get(g) || 0) >= passes);
+      if (passes > 0 && mode !== "normal"
+          && (setCleared || Date.now() - lastCheckin >= CHECKIN_MS)) {
+        lastCheckin = Date.now();
+        sessionGood.clear(); // a fresh round if you keep going
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
         const action = await messageScreen([
-          `${c.green("✓")}  nice — ${correct}/${seen} this run`,
+          `${c.green("✓")}  nice — you've got these for now`,
           "",
-          more ? c.dim("keep going, or learn the next set?") : c.dim("keep going, or take a break?"),
+          more ? c.dim("learn the next set, keep going, or stop?") : c.dim("keep going, or take a break?"),
         ], { allowLearnNext: more, keepGoing: true });
         if (await handle(action)) break;
       }
