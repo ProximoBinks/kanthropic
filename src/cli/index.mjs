@@ -95,10 +95,16 @@ function cmdConfig(flags) {
   if (flags.advance === "off") store.config.autoAdvance = false;
   if (flags.continuous === "on" || flags.continuous === true) store.config.continuous = true;
   if (flags.continuous === "off") store.config.continuous = false;
+  if (flags.checkin !== undefined) {
+    if (flags.checkin === "off") store.config.checkinEvery = 0;
+    else if (flags.checkin === "on" || flags.checkin === true) store.config.checkinEvery = 20;
+    else if (!isNaN(+flags.checkin)) store.config.checkinEvery = Math.max(0, Math.floor(+flags.checkin));
+  }
   save(store);
   stdout.write(`${green("✓")} config: script=${store.config.script} `
     + `image=${store.config.image} advance=${store.config.autoAdvance ? "on" : "off"} `
     + `continuous=${store.config.continuous ? "on" : "off"} `
+    + `checkin=${store.config.checkinEvery || "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
 }
 

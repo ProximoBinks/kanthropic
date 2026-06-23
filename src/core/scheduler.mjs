@@ -53,7 +53,15 @@ function toCard(c, now) {
 export function gradeCard(script, glyph, prev, correct, now = new Date()) {
   const entry = entryByGlyph(script, glyph);
   const romaji = entry ? entry.romaji : (prev?.romaji ?? "");
-  const next = f.next(toCard(prev, now), now, correct ? Rating.Good : Rating.Again).card;
+  const rating = correct ? Rating.Good : Rating.Again;
+  let next;
+  try {
+    next = f.next(toCard(prev, now), now, rating).card;
+  } catch {
+    // Corrupt/legacy card state (e.g. a null stability) must not crash the drill
+    // — restart this card's schedule cleanly instead.
+    next = f.next(createEmptyCard(now), now, rating).card;
+  }
 
   // Track the number of DISTINCT days the card was recalled correctly. A card
   // counts as mastered only once this reaches MASTER_DAYS (see isMastered), so

@@ -35,6 +35,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_GLYPH_ROWS = 16;
 const MAX_GLYPH_COLS = 42;
 
+// Max time between check-ins when drilling past the schedule (the other trigger
+// is a clean streak of `checkinEvery`).
+const CHECKIN_MS = 6 * 60 * 1000;
+
 /** Center each line within `cols` and join. @param {string[]} lines */
 function center(lines, cols) {
   return lines.map((l) => " ".repeat(Math.max(0, Math.floor((cols - [...l].length) / 2))) + l).join("\n");
@@ -83,6 +87,10 @@ export async function runDrill(opts = {}) {
   // "focus" = drill only what you're still learning (ignores due, auto-exits
   // when mastered); "review" = drill the whole learned set to self-test.
   let mode = "normal";
+  // Check-in pacing: when drilling past the schedule, pause after a clean streak
+  // or some time, so it isn't mindless. A miss resets the streak.
+  let streak = 0;
+  let lastCheckin = Date.now();
   let lastState = readSessionState();
 
   // Soft bell when Claude transitions into thinking — a non-intrusive cue.
@@ -96,7 +104,7 @@ export async function runDrill(opts = {}) {
   // "learn" ([n], when `allowLearnNext`), "cram" ([r], when `allowCram`), or
   // "hiragana"/"katakana" if the user typed /h · /k to switch script.
   const plainLen = (s) => [...s.replace(/\x1b\[[0-9;]*m/g, "")].length;
-  async function messageScreen(lines, { allowCram = false, allowLearnNext = false, cramLabel = "practice anyway" } = {}) {
+  async function messageScreen(lines, { allowCram = false, allowLearnNext = false, keepGoing = false, cramLabel = "practice anyway" } = {}) {
     const rows = stdout.rows || 16, cols = stdout.columns || 40;
     stdout.write("\x1b[?25l" + CLEAR);
     stdout.write("\n".repeat(Math.max(0, (rows - lines.length - 3) >> 1)));
@@ -104,6 +112,7 @@ export async function runDrill(opts = {}) {
     const parts = [];
     if (allowLearnNext) parts.push("[n] learn next row");
     if (allowCram) parts.push(`[r] ${cramLabel}`);
+    if (keepGoing) parts.push("[Enter] keep going");
     parts.push("[q] quit");
     const foot = c.dim(parts.join(" · "));
     stdout.write("\n" + " ".repeat(Math.max(0, (cols - plainLen(foot)) >> 1)) + foot + "\n");
@@ -164,7 +173,13 @@ export async function runDrill(opts = {}) {
         if (pool.size === 0) mode = "normal"; // mastered the focus set → resume scheduling
       }
       if (mode === "normal") pool = practiceablePool(store, script, now);
-      else if (mode === "review") pool = learnedSet(store, script);
+      else if (mode === "review") {
+        // Mostly the still-learning set, with previously learned cards mixed in
+        // for retention — so it doesn't get stuck drilling one row forever. When
+        // everything's mastered, focus is empty so it just reviews the whole set.
+        const focus = unmasteredPool(store, script);
+        pool = (focus.size && Math.random() < 0.7) ? focus : learnedSet(store, script);
+      }
       if (pool.size === 0) {
         if (limit) break; // bounded session ran out of due cards → recap
         // Continuous mode: never stop on "caught up". Roll straight into the
@@ -172,7 +187,7 @@ export async function runDrill(opts = {}) {
         // ignoring due dates — so it drills on until you master it or go add
         // more. Only the genuinely-empty "nothing learned yet" screen remains.
         if (store.config.continuous && learnedCount(store, script) > 0) {
-          mode = unmasteredPool(store, script).size ? "focus" : "review";
+          mode = "review"; // interleave the whole set (weak cards weighted), not one row
           continue;
         }
         const more = learnedCount(store, script) < SCRIPT_TOTAL;
@@ -292,18 +307,35 @@ export async function runDrill(opts = {}) {
       seen++;
       const aw = [...answer].length;
       if (ok) {
-        correct++;
+        correct++; streak++;
         // ✓ inline, just after your answer (Enter dropped the cursor a line).
         stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.green("✓")}\x1b[B\r`);
         await sleep(450);
       } else {
         // ✗ + reading inline on the same line; brief pause to read it (no second
         // Enter, which would scroll from the spare bottom row).
+        streak = 0;
         missed.push({ glyph: next.glyph, romaji: entry.romaji });
         stdout.write(`\x1b[A\x1b[${promptW + aw + 1}C${c.red("✗")}  ${c.dim("= " + entry.romaji)}\x1b[B\r`);
         await sleep(1600);
       }
       if (limit && seen >= limit) break; // bounded session done
+
+      // Check-in: when drilling past the schedule (focus/review), pause after a
+      // clean streak or ~6 min so it isn't mindless — choose to learn the next
+      // set, keep going, or stop. `checkinEvery` 0 disables it.
+      const every = store.config.checkinEvery | 0;
+      if (every > 0 && mode !== "normal"
+          && (streak >= every || Date.now() - lastCheckin >= CHECKIN_MS)) {
+        streak = 0; lastCheckin = Date.now();
+        const more = learnedCount(store, script) < SCRIPT_TOTAL;
+        const action = await messageScreen([
+          `${c.green("✓")}  nice — ${correct}/${seen} this run`,
+          "",
+          more ? c.dim("keep going, or learn the next set?") : c.dim("keep going, or take a break?"),
+        ], { allowLearnNext: more, keepGoing: true });
+        if (await handle(action)) break;
+      }
     }
   } finally {
     clearInterval(poll);

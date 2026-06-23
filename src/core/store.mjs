@@ -32,7 +32,10 @@ import { KANTHROPIC_DIR, PROGRESS_PATH } from "./paths.mjs";
 // continuous: when on, the drill never stops at "caught up" — once nothing is
 // due it rolls straight into drilling what you're still learning, then the whole
 // learned set, ignoring FSRS due timers, until you master it or go add new cards.
-export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true, continuous: false };
+// checkinEvery: when drilling past the schedule (continuous / "practice anyway"),
+// pause for a check-in after this many correct-in-a-row (or ~6 min), so it isn't
+// mindless. 0 disables. Lets you choose to learn the next set, keep going, or stop.
+export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true, continuous: false, checkinEvery: 20 };
 
 /** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[] }} */
 export function emptyStore() {
