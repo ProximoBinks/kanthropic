@@ -12,7 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
-import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, isMastered, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { walkRow, nextUnlearnedRow } from "./learn.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -40,10 +40,10 @@ function center(lines, cols) {
   return lines.map((l) => " ".repeat(Math.max(0, Math.floor((cols - [...l].length) / 2))) + l).join("\n");
 }
 
-/** A script is "mastered" once every glyph has graduated past learning
- *  (FSRS state ≥ 2 = Review). @param {Record<string, any>} cards */
+/** A script is "mastered" once every glyph is mastered (FSRS Review + recalled
+ *  on ≥ MASTER_DAYS separate days). @param {Record<string, any>} cards */
 export function scriptMastered(cards, script) {
-  return ENTRIES.every((e) => (cards[glyphOf(e, script)]?.state ?? 0) >= 2);
+  return ENTRIES.every((e) => isMastered(cards[glyphOf(e, script)]));
 }
 
 /** The script to actually drill. An explicit `--script` always wins; otherwise

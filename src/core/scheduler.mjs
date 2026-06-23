@@ -8,9 +8,17 @@
  */
 import { createEmptyCard, fsrs, generatorParameters, Rating } from "ts-fsrs";
 import { entryByGlyph } from "../data/kana.mjs";
+import { MASTER_DAYS, MASTERED_STATE } from "./learned.mjs";
 
 // Fuzz spreads due dates so cards reviewed together don't all return the same day.
-const f = fsrs(generatorParameters({ enable_fuzz: true }));
+// A `1d` learning step (default is just 1m/10m) means a freshly learned card
+// comes back the NEXT DAY before it can graduate — so "mastered" reflects recall
+// across a real gap, not two passes seconds apart.
+const f = fsrs(generatorParameters({ enable_fuzz: true, learning_steps: ["1m", "10m", "1d"] }));
+
+const DAY_MS = 86_400_000;
+/** UTC day index for `ms` — used to count *distinct* days a card was recalled. */
+const dayOf = (ms) => Math.floor(ms / DAY_MS);
 
 /** Reconstruct a ts-fsrs Card from a stored row (ms → Date), or start fresh.
  *  @param {CardState | undefined} c @param {Date} now */
@@ -46,7 +54,25 @@ export function gradeCard(script, glyph, prev, correct, now = new Date()) {
   const entry = entryByGlyph(script, glyph);
   const romaji = entry ? entry.romaji : (prev?.romaji ?? "");
   const next = f.next(toCard(prev, now), now, correct ? Rating.Good : Rating.Again).card;
+
+  // Track the number of DISTINCT days the card was recalled correctly. A card
+  // counts as mastered only once this reaches MASTER_DAYS (see isMastered), so
+  // two passes in one sitting can't fake it. Cards from before this field
+  // existed are treated as already proven, so they aren't demoted.
+  const today = dayOf(now.getTime());
+  const priorGoodDays = prev?.goodDays ?? ((prev?.state ?? 0) >= MASTERED_STATE ? MASTER_DAYS : 0);
+  let goodDays, lastGoodDay;
+  if (correct) {
+    goodDays = today !== prev?.lastGoodDay ? priorGoodDays + 1 : priorGoodDays;
+    lastGoodDay = today;
+  } else {
+    goodDays = 0;            // a miss breaks the across-days streak
+    lastGoodDay = undefined;
+  }
+
   return {
+    goodDays,
+    lastGoodDay,
     script,
     romaji,
     due: next.due.getTime(),

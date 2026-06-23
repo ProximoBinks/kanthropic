@@ -12,9 +12,19 @@ export const SCRIPT_TOTAL = ENTRIES.length; // 104
 /** FSRS state at which a card counts as "mastered" (Review). */
 export const MASTERED_STATE = 2;
 
-/** Has this card graduated to FSRS Review? @param {{state?:number}=} card */
+/** Distinct days a card must be recalled correctly before it counts as mastered,
+ *  so two passes in one sitting (short-term memory) can't graduate it. */
+export const MASTER_DAYS = 2;
+
+/**
+ * Is this card mastered? It must have graduated to FSRS Review AND been recalled
+ * correctly on at least MASTER_DAYS separate days — real retention, not a fluke.
+ * Cards from before day-tracking existed (no `goodDays`) are treated as proven.
+ * @param {{state?:number, goodDays?:number}=} card
+ */
 export function isMastered(card) {
-  return (card?.state ?? 0) >= MASTERED_STATE;
+  if ((card?.state ?? 0) < MASTERED_STATE) return false;
+  return (card?.goodDays ?? Infinity) >= MASTER_DAYS;
 }
 
 /**

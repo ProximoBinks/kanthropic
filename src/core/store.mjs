@@ -19,7 +19,8 @@
  *   due: number, stability: number, difficulty: number,
  *   elapsed_days: number, scheduled_days: number, learning_steps: number,
  *   reps: number, lapses: number, state: number, last_review?: number,
- *   seen: number, misses: number
+ *   seen: number, misses: number,
+ *   goodDays?: number, lastGoodDay?: number
  * }} CardState
  */
 import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "node:fs";

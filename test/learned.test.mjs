@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
+import { gradeCard } from "../src/core/scheduler.mjs";
 
 const NOW = 1_000_000_000_000;
 
@@ -63,11 +64,27 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
     expect(pickNext("hiragana", {}, null, NOW, Math.random, new Set(["さ"])).glyph).toBe("さ");
   });
 
-  it("isMastered tracks FSRS Review state (≥ 2)", () => {
+  it("isMastered needs Review state AND recall on >= 2 separate days", () => {
     expect(isMastered(undefined)).toBe(false);
-    expect(isMastered({ state: 1 })).toBe(false);
-    expect(isMastered({ state: 2 })).toBe(true);
-    expect(isMastered({ state: 3 })).toBe(true);
+    expect(isMastered({ state: 1, goodDays: 9 })).toBe(false); // not graduated
+    expect(isMastered({ state: 2, goodDays: 1 })).toBe(false); // crammed one day → not a fluke-pass
+    expect(isMastered({ state: 2, goodDays: 2 })).toBe(true);  // two separate days
+    expect(isMastered({ state: 2 })).toBe(true);               // legacy card (no field) = already proven
+    expect(isMastered({ state: 3 })).toBe(true);               // legacy relearning card
+  });
+
+  it("gradeCard counts DISTINCT correct days (cramming one sitting stays at 1)", () => {
+    const d1a = new Date("2026-06-01T10:00:00Z");
+    const d1b = new Date("2026-06-01T20:00:00Z"); // same day, hours later
+    const d2 = new Date("2026-06-02T10:00:00Z");  // next day
+    let c = gradeCard("hiragana", "あ", undefined, true, d1a);
+    expect(c.goodDays).toBe(1);
+    c = gradeCard("hiragana", "あ", c, true, d1b);
+    expect(c.goodDays).toBe(1);                    // same day → no credit
+    c = gradeCard("hiragana", "あ", c, true, d2);
+    expect(c.goodDays).toBe(2);                    // a real second day
+    c = gradeCard("hiragana", "あ", c, false, d2);
+    expect(c.goodDays).toBe(0);                    // a miss breaks the streak
   });
 
   it("resetGlyphs forgets cards + pool, counting either", () => {

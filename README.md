@@ -191,10 +191,11 @@ going until you've mastered everything or open `kanthropic learn` to add more. T
 running past the schedule; turn it back off with `--continuous off`.
 
 > **What counts as "mastered"?** Each card is scheduled by FSRS — a correct answer grades as
-> *Good*, a wrong one as *Again*. A character is "mastered" once FSRS graduates it past the short
-> learning steps into its **Review** state (in practice, a couple of correct answers in a row). It
-> means *graduated from initial learning*, not "known forever" — it'll still come back for spaced
-> review later.
+> *Good*, a wrong one as *Again*. A character only counts as mastered once it has **graduated past
+> the learning steps AND been recalled correctly on at least two separate days**. Two passes in one
+> sitting is short-term memory, so it deliberately won't graduate a card — a new card comes back the
+> next day to earn that second day (and a miss resets the streak). This holds even in continuous
+> mode: cramming can't fake mastery, it just keeps the card in rotation until a real second day.
 
 **Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
 katakana without restarting — this works in the **session pane** too, and persists as your
