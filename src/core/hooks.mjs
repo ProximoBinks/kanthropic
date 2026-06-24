@@ -3,8 +3,15 @@
  * that — inside the `kanthropic session` tmux layout — a kana drill pane
  * OPENS below Claude while it's thinking and CLOSES when it's done.
  *
- *   UserPromptSubmit → on-thinking.sh : write state + split a kana pane below
- *   Stop             → on-idle.sh     : write state + kill the kana pane
+ *   UserPromptSubmit → on-thinking.sh : write state + open a kana pane below
+ *   PreToolUse       → on-thinking.sh : reopen the pane when Claude resumes
+ *   Notification     → on-idle.sh     : close the pane when Claude needs you
+ *   Stop             → on-idle.sh     : close the pane at end of turn
+ *
+ * The open script is idempotent (it won't recreate a pane that's already alive),
+ * so PreToolUse firing on every tool is a no-op — but when Claude PAUSES to ask
+ * you something (a tool-permission prompt, an MCP elicitation), the Notification
+ * hook closes the pane so you can answer, and the next PreToolUse reopens it.
  *
  * The heavy lifting lives in two small scripts in ~/.kanthropic so settings.json
  * stays a clean one-liner. Both are guarded: the pane open/close only happens
@@ -31,8 +38,9 @@ const ON_IDLE = join(KANTHROPIC_DIR, "on-idle.sh");
 const PANE_ROWS = 18;
 
 // Open the kana pane below Claude. Guarded to the "kanthropic" tmux session so
-// it never disturbs other sessions. Kills any stale kana pane first so prompts
-// never stack panes, then records the new pane id for on-idle to close.
+// it never disturbs other sessions. IDEMPOTENT: if our pane is already alive it
+// does nothing, so PreToolUse (which fires on every tool) never thrashes it —
+// only a genuine reopen (after the pane was closed for a prompt) recreates it.
 // The pane id is tracked per tmux session ($SESSION) so several concurrent
 // `kanthropic session` windows each open/close their OWN kana pane.
 const THINKING_SCRIPT = `#!/bin/sh
@@ -43,7 +51,10 @@ SESSION=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
 case "$SESSION" in kanthropic*) ;; *) exit 0 ;; esac
 PANE="$HOME/.kanthropic/sessions/$SESSION.pane"
 OLD=$(cat "$PANE" 2>/dev/null)
-[ -n "$OLD" ] && tmux kill-pane -t "$OLD" 2>/dev/null
+# Already open for this session? Leave it (don't recreate on every tool call).
+if [ -n "$OLD" ] && tmux list-panes -s -t "$SESSION" -F '#{pane_id}' 2>/dev/null | grep -qx "$OLD"; then
+  exit 0
+fi
 NEW=$(tmux split-window -v -l ${PANE_ROWS} -P -F '#{pane_id}' -t "$TMUX_PANE" 'kanthropic drill' 2>/dev/null)
 [ -n "$NEW" ] && printf '%s' "$NEW" > "$PANE"
 exit 0
@@ -110,7 +121,11 @@ export function installHooks() {
 
     const cur = readTopLevel(src, "hooks");
     const hooks = (cur && typeof cur === "object") ? { ...cur } : {};
+    // Open on a new prompt and on every tool (the latter reopens after a pause);
+    // close when Claude needs you (Notification) and at end of turn (Stop).
     hooks.UserPromptSubmit = [...withoutOurs(hooks.UserPromptSubmit), hookEntry("thinking")];
+    hooks.PreToolUse = [...withoutOurs(hooks.PreToolUse), hookEntry("thinking")];
+    hooks.Notification = [...withoutOurs(hooks.Notification), hookEntry("idle")];
     hooks.Stop = [...withoutOurs(hooks.Stop), hookEntry("idle")];
 
     const next = upsertTopLevel(src, "hooks", pretty(hooks));
@@ -134,7 +149,7 @@ export function uninstallHooks() {
 
     /** @type {Record<string, any>} */
     const hooks = { ...cur };
-    for (const ev of ["UserPromptSubmit", "Stop"]) {
+    for (const ev of ["UserPromptSubmit", "PreToolUse", "Notification", "Stop"]) {
       const cleaned = withoutOurs(hooks[ev]);
       if (cleaned.length) hooks[ev] = cleaned; else delete hooks[ev];
     }

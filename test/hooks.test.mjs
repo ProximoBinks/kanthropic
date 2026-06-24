@@ -23,7 +23,7 @@ describe("Claude hook wiring", () => {
   });
   afterEach(() => rmSync(home, { recursive: true, force: true }));
 
-  it("adds UserPromptSubmit + Stop and removes them cleanly (byte-exact, no prior hooks)", () => {
+  it("adds open/close hooks and removes them cleanly (byte-exact, no prior hooks)", () => {
     const orig = '{\n  "model": "x",\n  "permissions": { "allow": ["Bash"] }\n}\n';
     writeFileSync(settings(home), orig, "utf8");
 
@@ -32,11 +32,15 @@ describe("Claude hook wiring", () => {
     expect(parseable(after)).toBe(true);
     const hooks = readTopLevel(after, "hooks");
     expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("on-thinking.sh");
+    expect(hooks.PreToolUse[0].hooks[0].command).toContain("on-thinking.sh"); // reopen after a pause
+    expect(hooks.Notification[0].hooks[0].command).toContain("on-idle.sh");   // close when Claude asks
     expect(hooks.Stop[0].hooks[0].command).toContain("on-idle.sh");
     expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("kanthropic-panel");
     // helper scripts written with the open/close logic
     expect(existsSync(join(home, ".kanthropic", "on-thinking.sh"))).toBe(true);
-    expect(readFileSync(join(home, ".kanthropic", "on-thinking.sh"), "utf8")).toContain("split-window");
+    const open = readFileSync(join(home, ".kanthropic", "on-thinking.sh"), "utf8");
+    expect(open).toContain("split-window");
+    expect(open).toContain("list-panes"); // idempotent guard so PreToolUse won't thrash
     expect(readFileSync(join(home, ".kanthropic", "on-idle.sh"), "utf8")).toContain("kill-pane");
 
     run(home, "hooks-uninstall");
@@ -54,15 +58,18 @@ describe("Claude hook wiring", () => {
 
     run(home, "hooks-install");
     let hooks = readTopLevel(readFileSync(settings(home), "utf8"), "hooks");
-    expect(hooks.PreToolUse[0].hooks[0].command).toBe("echo mine");
-    expect(Object.keys(hooks).sort()).toEqual(["PreToolUse", "Stop", "UserPromptSubmit"]);
+    expect(hooks.PreToolUse[0].hooks[0].command).toBe("echo mine"); // user's, kept at index 0
+    expect(hooks.PreToolUse[1].hooks[0].command).toContain("on-thinking.sh"); // ours appended
+    expect(Object.keys(hooks).sort()).toEqual(["Notification", "PreToolUse", "Stop", "UserPromptSubmit"]);
 
     run(home, "hooks-uninstall");
     const after = readFileSync(settings(home), "utf8");
     expect(parseable(after)).toBe(true);
     hooks = readTopLevel(after, "hooks");
     expect(hooks.PreToolUse[0].hooks[0].command).toBe("echo mine"); // user's hook survives
+    expect(hooks.PreToolUse[1]).toBeUndefined(); // ours gone, user's alone again
     expect(hooks.UserPromptSubmit).toBeUndefined(); // ours gone
+    expect(hooks.Notification).toBeUndefined();
     expect(hooks.Stop).toBeUndefined();
   });
 });

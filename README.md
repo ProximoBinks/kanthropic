@@ -243,9 +243,13 @@ switches. Turn that off with `kanthropic config --advance off`, or jump straight
 
 ## How it works
 
-- **Hooks** (`UserPromptSubmit` / `Stop` in `~/.claude/settings.json`) write a state file and,
-  inside any `kanthropic*` tmux session, split/kill that session's kana pane (tracked per
-  session in `~/.kanthropic/sessions/`, so multiple windows stay independent).
+- **Hooks** in `~/.claude/settings.json` write a state file and, inside any `kanthropic*` tmux
+  session, open/close that session's kana pane (tracked per session in `~/.kanthropic/sessions/`,
+  so multiple windows stay independent). `UserPromptSubmit` opens it; `Stop` closes it. When
+  Claude **pauses to ask you something** (a tool-permission prompt or MCP elicitation) the
+  `Notification` hook closes the pane so you can answer, and the next `PreToolUse` reopens it once
+  Claude resumes. The open script is idempotent, so the frequent `PreToolUse` calls never thrash
+  the pane.
 - **Rendering** rasterizes the font outline (opentype.js) and emits a **sixel** image inside
   tmux (which stores it in its grid so it survives redraws), an **iTerm2** image standalone,
   or **chafa braille symbol-art** as a universal fallback.
