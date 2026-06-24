@@ -82,12 +82,9 @@ export function learnedSet(store, script) {
 }
 
 /**
- * Learned glyphs you haven't mastered yet (FSRS state < Review). This is the
- * "still learning" focus set: when you press "practice anyway" right after
- * learning a new row, you drill just these — not the whole deck — so the
- * characters you already know don't crowd out the new ones.
- * Empty ⇒ everything learned is mastered.
- * @returns {Set<string>}
+ * Learned glyphs you haven't mastered yet (FSRS Review + 2 days). Used for the
+ * honest "still learning N" count and icons — includes graduated cards that are
+ * just waiting on their second day. @returns {Set<string>}
  */
 export function unmasteredPool(store, script) {
   const set = new Set(store.learned);
@@ -95,6 +92,23 @@ export function unmasteredPool(store, script) {
   for (const e of ENTRIES) {
     const g = glyphOf(e, script);
     if (set.has(g) && !isMastered(store.cards[g])) out.add(g);
+  }
+  return out;
+}
+
+/**
+ * Learned glyphs still in the LEARNING PHASE — not yet graduated to FSRS Review
+ * (New / Learning / Relearning). This is the active grind set: once a card
+ * graduates it rides its schedule instead of being drilled on repeat, even if
+ * it isn't "mastered" yet (that still needs a second day). So you can't get
+ * stuck hammering a card you've clearly already learned. @returns {Set<string>}
+ */
+export function learningPool(store, script) {
+  const set = new Set(store.learned);
+  const out = new Set();
+  for (const e of ENTRIES) {
+    const g = glyphOf(e, script);
+    if (set.has(g) && (store.cards[g]?.state ?? 0) !== MASTERED_STATE) out.add(g);
   }
   return out;
 }

@@ -12,7 +12,7 @@ import { checkAnswer, entryByGlyph, ENTRIES, glyph as glyphOf } from "../data/ka
 import { load, save } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
 import { pickNext } from "../core/ambient.mjs";
-import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, isMastered, SCRIPT_TOTAL } from "../core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, learningPool, isMastered, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { walkRow, nextUnlearnedRow } from "./learn.mjs";
 import { readSessionState } from "../core/session.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -150,9 +150,9 @@ export async function runDrill(opts = {}) {
           // you miss them and FSRS would otherwise schedule them out.
           if (row) { await walkRow({ entries: row, script, renderer, cellPx, reader }); mode = "focus"; }
         } else if (action === "cram") {
-          // Same key, context-aware: focus the still-learning set if there is
+          // Same key, context-aware: grind the still-in-learning set if there is
           // one, otherwise review the whole learned set (self-test).
-          mode = unmasteredPool(store, script).size ? "focus" : "review";
+          mode = learningPool(store, script).size ? "focus" : "review";
         } else if (action === "hiragana" || action === "katakana") swap(action);
         return false;
       };
@@ -170,8 +170,8 @@ export async function runDrill(opts = {}) {
       // the whole learned set; "normal" follows FSRS due dates.
       let pool;
       if (mode === "focus") {
-        pool = unmasteredPool(store, script);
-        if (pool.size === 0) mode = "normal"; // mastered the focus set → resume scheduling
+        pool = learningPool(store, script); // only cards still in the learning phase
+        if (pool.size === 0) mode = "normal"; // all graduated → ride the schedule
       }
       if (mode === "normal") pool = practiceablePool(store, script, now);
       else if (mode === "review") pool = learnedSet(store, script);
@@ -182,7 +182,7 @@ export async function runDrill(opts = {}) {
         // and only widen to the whole learned set (review) once it's all
         // mastered. The set-completion check-in below ends each grind.
         if (store.config.continuous && learnedCount(store, script) > 0) {
-          mode = unmasteredPool(store, script).size ? "focus" : "review";
+          mode = learningPool(store, script).size ? "focus" : "review";
           continue;
         }
         const more = learnedCount(store, script) < SCRIPT_TOTAL;

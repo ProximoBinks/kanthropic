@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
+import { ensureLearned, learnedCount, practiceablePool, learnedSet, unmasteredPool, learningPool, isMastered, resetGlyphs } from "../src/core/learned.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
 import { gradeCard } from "../src/core/scheduler.mjs";
 
@@ -41,6 +41,18 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
       // え: learned, no card → never drilled → focus
       "か": { seen: 2, state: 1 },           // learning but NOT learned → excluded
     } };
+    expect([...unmasteredPool(store, "hiragana")].sort()).toEqual(["い", "う", "え"]);
+  });
+
+  it("learningPool excludes graduated cards waiting on day 2 (no endless grind)", () => {
+    const store = { learned: ["あ", "い", "う", "え"], cards: {
+      "あ": { state: 2, goodDays: 2 },  // mastered
+      "い": { state: 2, goodDays: 1 },  // graduated, just needs a 2nd day → NOT actively learning
+      "う": { state: 1 },               // learning → active grind
+      // え: no card (new) → active grind
+    } };
+    expect([...learningPool(store, "hiragana")].sort()).toEqual(["う", "え"]);
+    // but the honest "not mastered yet" count still includes い
     expect([...unmasteredPool(store, "hiragana")].sort()).toEqual(["い", "う", "え"]);
   });
 
