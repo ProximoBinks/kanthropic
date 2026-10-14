@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { scriptMastered, resolveScript } from "../src/cli/drill.mjs";
+import { scriptMastered, resolveScript } from "../src/core/flow.mjs";
 import { ENTRIES, glyph as glyphOf } from "../src/data/kana.mjs";
 
-/** Build a cards map where every glyph of `script` is at FSRS state `state`. */
-function cardsAll(script, state) {
+/** Build a cards map where every glyph of `script` is at FSRS state `state`.
+ *  `extra` merges into each card — pass goodDays to exercise the REAL 2-day
+ *  mastery path instead of the legacy no-field fallback. */
+function cardsAll(script, state, extra = {}) {
   const cards = {};
-  for (const e of ENTRIES) cards[glyphOf(e, script)] = { state, seen: 1 };
+  for (const e of ENTRIES) cards[glyphOf(e, script)] = { state, seen: 1, ...extra };
   return cards;
 }
 
@@ -14,6 +16,11 @@ describe("auto-advance hiragana → katakana", () => {
     expect(scriptMastered({}, "hiragana")).toBe(false);
     expect(scriptMastered(cardsAll("hiragana", 1), "hiragana")).toBe(false); // still learning
     expect(scriptMastered(cardsAll("hiragana", 2), "hiragana")).toBe(true);  // all graduated
+  });
+
+  it("scriptMastered honours the 2-day rule when goodDays is tracked", () => {
+    expect(scriptMastered(cardsAll("hiragana", 2, { goodDays: 1 }), "hiragana")).toBe(false);
+    expect(scriptMastered(cardsAll("hiragana", 2, { goodDays: 2 }), "hiragana")).toBe(true);
   });
 
   it("advances to katakana once hiragana is mastered (and katakana isn't)", () => {

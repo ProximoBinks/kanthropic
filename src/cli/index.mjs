@@ -2,22 +2,24 @@
 /**
  * kanthropic CLI — command router.
  *
- *   kanthropic install            Add the ambient flashcard line to Claude Code.
- *   kanthropic uninstall          Remove it, restoring any prior status line.
- *   kanthropic study [opts]       Typed, FSRS-scored drill (run at the idle prompt).
+ *   kanthropic setup              Install the status line + hooks, print a check.
+ *   kanthropic session            tmux layout: Claude on top, kana pane below.
+ *   kanthropic watch              No-tmux mode: drills whenever Claude thinks.
+ *   kanthropic drill [opts]       Typed, FSRS-scored drill.
  *   kanthropic status             Show install state + your progress.
  *   kanthropic config [opts]      Set default script / flip timing.
- *   kanthropic preview            Print a few sample ambient lines.
  *
  * Options: --script hiragana|katakana   --count N   --front <ms>   --back <ms>
  */
 import { stdout } from "node:process";
 import { execFileSync } from "node:child_process";
 import { ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
-import { load, save } from "../core/store.mjs";
+import { load, update } from "../core/store.mjs";
 import { pickNext } from "../core/ambient.mjs";
 import { install, uninstall, isInstalled } from "../install/install.mjs";
 import { installHooks, uninstallHooks, hooksInstalled } from "../core/hooks.mjs";
+import { installGrokHooks, uninstallGrokHooks, grokHooksInstalled } from "../core/grok.mjs";
+import { runApp } from "./app.mjs";
 import { getFont } from "./font.mjs";
 import { runDrill } from "./drill.mjs";
 import { runSession, listKanthropicSessions, killKanthropicSessions } from "./session.mjs";
@@ -35,6 +37,7 @@ const green = (s) => `\x1b[32m${s}\x1b[0m`;
 
 /** @param {string[]} argv @returns {Record<string, string|boolean>} */
 function parseFlags(argv) {
+  /** @type {Record<string, string|boolean>} */
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -58,7 +61,7 @@ function scriptFrom(flags, fallback) {
 function cmdStatus() {
   const store = load();
   const installed = isInstalled();
-  stdout.write(`\n${accent("kanthropic")} — ambient kana while Claude thinks\n\n`);
+  stdout.write(`\n${accent("kanthropic")} — kana in the menu bar while Grok thinks\n\n`);
   stdout.write(`  status line : ${installed ? green("installed") : dim("not installed")}`
     + `${installed ? "" : "  (run " + bold("kanthropic install") + ")"}\n`);
   const hooks = hooksInstalled();
@@ -86,24 +89,28 @@ function cmdStatus() {
 }
 
 function cmdConfig(flags) {
-  const store = load();
-  if (flags.script) store.config.script = scriptFrom(flags, store.config.script);
-  if (flags.front && !isNaN(+flags.front)) store.config.frontMs = +flags.front;
-  if (flags.back && !isNaN(+flags.back)) store.config.backMs = +flags.back;
-  if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) store.config.image = flags.image;
-  if (flags.advance === "on" || flags.advance === true) store.config.autoAdvance = true;
-  if (flags.advance === "off") store.config.autoAdvance = false;
-  if (flags.continuous === "on" || flags.continuous === true) store.config.continuous = true;
-  if (flags.continuous === "off") store.config.continuous = false;
-  if (flags.checkin !== undefined) {
-    if (flags.checkin === "off") store.config.checkinEvery = 0;
-    else if (flags.checkin === "on" || flags.checkin === true) store.config.checkinEvery = 3;
-    else if (!isNaN(+flags.checkin)) store.config.checkinEvery = Math.max(0, Math.floor(+flags.checkin));
-  }
-  save(store);
+  const store = update((s) => {
+    const cfg = s.config;
+    if (flags.script) cfg.script = scriptFrom(flags, cfg.script);
+    if (flags.front && !isNaN(+flags.front)) cfg.frontMs = +flags.front;
+    if (flags.back && !isNaN(+flags.back)) cfg.backMs = +flags.back;
+    if (typeof flags.image === "string" && ["on", "off", "auto"].includes(flags.image)) cfg.image = flags.image;
+    if (flags.advance === "on" || flags.advance === true) cfg.autoAdvance = true;
+    if (flags.advance === "off") cfg.autoAdvance = false;
+    if (flags.continuous === "on" || flags.continuous === true) cfg.continuous = true;
+    if (flags.continuous === "off") cfg.continuous = false;
+    if (flags.pop === "on" || flags.pop === true) cfg.popOnThink = true;
+    if (flags.pop === "off") cfg.popOnThink = false;
+    if (flags.checkin !== undefined) {
+      if (flags.checkin === "off") cfg.checkinEvery = 0;
+      else if (flags.checkin === "on" || flags.checkin === true) cfg.checkinEvery = 3;
+      else if (!isNaN(+flags.checkin)) cfg.checkinEvery = Math.max(0, Math.floor(+flags.checkin));
+    }
+  });
   stdout.write(`${green("✓")} config: script=${store.config.script} `
     + `image=${store.config.image} advance=${store.config.autoAdvance ? "on" : "off"} `
     + `continuous=${store.config.continuous ? "on" : "off"} `
+    + `pop=${store.config.popOnThink !== false ? "on" : "off"} `
     + `checkin=${store.config.checkinEvery || "off"} `
     + `front=${store.config.frontMs}ms back=${store.config.backMs}ms\n`);
 }
@@ -148,9 +155,13 @@ async function cmdSessions(rest) {
 async function cmdImageTest(rest) {
   const flags = parseFlags(rest);
   const ch = rest.find((a) => !a.startsWith("--")) || "ば";
-  // `--via sixel|iterm|chafa` forces a specific renderer; otherwise auto-detect.
-  const via = ["sixel", "iterm", "chafa"].includes(flags.via) ? flags.via : pickRenderer("on");
-  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} via ${bold(via)}:\n\n`);
+  // `--via sixel|iterm|chafa` forces a specific renderer; otherwise the same
+  // auto-detection the drill uses — forcing "on" here used to dump raw sixel/
+  // base64 garbage on terminals without image support, in a DIAGNOSTIC command.
+  const forced = typeof flags.via === "string" && ["sixel", "iterm", "chafa"].includes(flags.via) ? flags.via : null;
+  const via = forced ?? pickRenderer("auto");
+  stdout.write(`\n${accent("imagetest")} — rendering ${bold(ch)} via ${bold(via)}`
+    + `${flags.via ? "" : dim(" (auto-detected)")}:\n\n`);
   if (via === "sixel") {
     const cellPx = (await probeCellHeight()) || 20;
     const sx = glyphSixel(ch, 10 * cellPx);
@@ -189,17 +200,23 @@ function cmdDoctor() {
   const major = +process.versions.node.split(".")[0];
   stdout.write("  " + (major >= 18 ? ok(`node ${process.version}`) : bad(`node ${process.version} (need ≥ 18)`)) + "\n");
   stdout.write("  " + (getFont() ? ok("kana font loaded (bundled — no install needed)") : bad("no kana font could be loaded")) + "\n");
-  stdout.write("  " + (sh("command -v claude") ? ok("claude CLI on PATH") : warn("claude CLI not found on PATH")) + "\n");
+  stdout.write("  " + (sh("command -v grok") ? ok("grok CLI on PATH") : warn("grok CLI not found on PATH — menu bar app still works standalone")) + "\n");
+  stdout.write("  " + (sh("command -v claude") ? ok("claude CLI on PATH") : dim("claude CLI not found (optional, legacy tmux session)")) + "\n");
 
   const tmuxV = sh("tmux -V");
   if (!tmuxV) {
-    stdout.write("  " + warn("tmux not installed — needed for `kanthropic session` (brew install tmux)") + "\n");
+    stdout.write("  " + dim("tmux not installed (only needed for the legacy `kanthropic session`)") + "\n");
   } else {
-    const sixel = sh('strings "$(command -v tmux)" 2>/dev/null | grep -qi sixel && echo yes');
     stdout.write("  " + ok(tmuxV) + "\n");
+    // `strings` (binutils) may be missing on slim Linuxes — report "unknown"
+    // rather than falsely claiming the build lacks sixel.
+    const hasStrings = sh("command -v strings");
+    const sixel = hasStrings ? sh('strings "$(command -v tmux)" 2>/dev/null | grep -qi sixel && echo yes') : null;
     stdout.write("    " + (sixel
       ? ok("built with sixel → real images render in the session")
-      : warn("built WITHOUT sixel → the session uses chafa braille (rebuild tmux for images)")) + "\n");
+      : hasStrings
+        ? warn("built WITHOUT sixel → the session uses chafa braille (rebuild tmux for images)")
+        : dim("? sixel support unknown (`strings` not installed — session falls back to chafa if absent)")) + "\n");
   }
 
   const tp = process.env.TERM_PROGRAM || "(unknown)";
@@ -211,8 +228,9 @@ function cmdDoctor() {
     stdout.write("    " + dim('VS Code / Antigravity: set "terminal.integrated.enableImages": true → Reload Window → new terminal') + "\n");
   }
 
-  stdout.write("  " + (isInstalled() ? ok("status line installed") : warn("status line not installed (run `kanthropic setup`)")) + "\n");
-  stdout.write("  " + (hooksInstalled() ? ok("session hooks installed") : warn("hooks not installed (run `kanthropic setup`)")) + "\n");
+  stdout.write("  " + (grokHooksInstalled() ? ok("Grok Build hooks installed") : warn("Grok hooks not installed (run `kanthropic grok-install`)")) + "\n");
+  stdout.write("  " + (isInstalled() ? ok("Claude status line installed") : dim("Claude status line not installed (optional)")) + "\n");
+  stdout.write("  " + (hooksInstalled() ? ok("Claude tmux hooks installed") : dim("Claude tmux hooks not installed (optional)")) + "\n");
 
   const cfg = load().config;
   stdout.write("  " + dim(`config: image=${cfg.image}  script=${cfg.script}`) + "\n\n");
@@ -221,19 +239,12 @@ function cmdDoctor() {
 /** One-shot: install the status line + hooks, then print the doctor + next steps. */
 function cmdSetup() {
   stdout.write(`\n${accent("kanthropic setup")}\n`);
-  const r1 = install();
-  stdout.write("  " + (r1.ok ? ok("status line installed") : bad(r1.reason)) + "\n");
-  const r2 = installHooks();
-  stdout.write("  " + (r2.ok ? ok("session hooks installed") : bad(r2.reason)) + "\n");
+  const r0 = installGrokHooks();
+  stdout.write("  " + (r0.ok ? ok("Grok Build hooks installed") : bad(r0.reason)) + "\n");
   cmdDoctor();
   stdout.write(`${bold("Next:")}\n`
-    + `  1. Crisp images (VS Code / Antigravity): set ${bold('"terminal.integrated.enableImages": true')},\n`
-    + `     then ${bold("Developer: Reload Window")}, then open a new terminal.\n`
-    + `  2. Start it:  ${bold("kanthropic session")}\n`
-    + dim(`     (No image support? It still works — falls back to chafa braille.)\n\n`)
-    + `${bold("Leaving the session:")}\n`
-    + `  • Step away (keep it running):  ${bold("Ctrl-b")} then ${bold("d")}  ${dim("(detach → `kanthropic session` to return)")}\n`
-    + `  • End it for good:  quit Claude (${bold("Ctrl-C")} / ${bold("/exit")}), then type ${bold("exit")}\n\n`);
+    + `  ${bold("kanthropic app")}     ${dim("build & launch the macOS menu bar app (recommended)")}\n`
+    + `  ${bold("kanthropic learn")}   ${dim("or just click あ in the menu bar and hit Learn")}\n\n`);
 }
 
 function cmdPreview(flags) {
@@ -251,23 +262,18 @@ function cmdPreview(flags) {
 }
 
 function help() {
-  stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Claude Code thinks\n\n`
-    + `  ${bold("setup")}                install everything + print an environment check\n`
-    + `  ${bold("doctor")}               environment check (what works, what to fix)\n`
-    + `  ${bold("install")}              add the ambient flashcard line to Claude Code\n`
-    + `  ${bold("uninstall")}            remove it (restores any prior status line)\n`
-    + `  ${bold("learn")} [--script k]   learn kana from zero, row by row (image + mnemonic)\n`
-    + `  ${bold("session")} [name] [args] seamless tmux layout; a name = a separate window (args→claude)\n`
-    + `  ${bold("sessions")} [clear]      list running sessions, or ${bold("clear")} to end them all\n`
-    + `  ${bold("drill")} [--count N]    practice your learned kana (endless, or N for a scored session)\n`
-    + `  ${bold("reset")} [--script k]   wipe progress for a clean slate (asks first; --yes to skip)\n`
-    + `  ${bold("hooks-install")}        wire Claude hooks (state + tmux focus switch)\n`
-    + `  ${bold("hooks-uninstall")}      remove those hooks\n`
-    + `  ${bold("status")}               show install state + your progress\n`
-    + `  ${bold("config")} [--image m]   set script / image / ${bold("--continuous on|off")} (never stop) / timing\n`
-    + `  ${bold("imagetest")} [glyph]    test image rendering here (else it uses chafa braille)\n`
-    + `  ${bold("preview")}              print a few sample ambient lines\n\n`
-    + dim("  options: --script hiragana|katakana  --count N  --front <ms>  --back <ms>\n\n"));
+  stdout.write(`\n${accent("kanthropic")} — learn kana in the dead time while Grok thinks\n\n`
+    + `  ${bold("app")}                  macOS menu bar app (recommended)\n`
+    + `  ${bold("setup")}                install Grok hooks + print an environment check\n`
+    + `  ${bold("doctor")}               environment check\n`
+    + `  ${bold("learn")} [--script k]   learn kana row by row\n`
+    + `  ${bold("drill")} [--count N]    revise what you've learned (q quit · /n next row)\n`
+    + `  ${bold("reset")} [--script k]   wipe progress (asks first; --yes to skip)\n`
+    + `  ${bold("grok-install")}         pop the menu bar app while Grok Build thinks\n`
+    + `  ${bold("grok-uninstall")}       remove those hooks\n`
+    + `  ${bold("status")}               progress\n`
+    + `  ${bold("config")} [--script k]  [--pop on|off] pop while Grok thinks\n\n`
+    + dim("  legacy: session · watch · install · hooks-install  (Claude / tmux)\n\n"));
 }
 
 async function main() {
@@ -281,7 +287,7 @@ async function main() {
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
       stdout.write(`${green("✓ installed.")} Your kana progress now shows in the Claude Code `
         + `status line and updates as you drill.\n`);
-      if (r.chained) stdout.write(dim("  Your existing status line was preserved and stacks below.\n"));
+      if (r.chained) stdout.write(dim("  Your existing status line still runs — its output shows in front of the kana stats.\n"));
       stdout.write(dim("  Start a new `claude` session (or `kanthropic session`) to see it.\n"));
       break;
     }
@@ -290,6 +296,22 @@ async function main() {
       if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
       stdout.write(`${green("✓ removed.")} Claude Code's status line is back to how it was. `
         + dim("(Your progress is kept.)\n"));
+      break;
+    }
+    case "app":
+      await runApp({ buildOnly: flags.build === true || rest.includes("--build") });
+      break;
+    case "grok-install": {
+      const r = installGrokHooks();
+      if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
+      stdout.write(`${green("✓")} Grok Build hooks installed. The menu bar app will pop while Grok thinks.\n`
+        + dim("  Launch it with: kanthropic app\n"));
+      break;
+    }
+    case "grok-uninstall": {
+      const r = uninstallGrokHooks();
+      if (!r.ok) { stdout.write(`\x1b[31m✗ ${r.reason}\x1b[0m\n`); process.exit(1); }
+      stdout.write(`${green("✓")} Grok hooks removed.\n`);
       break;
     }
     case "learn":
@@ -302,6 +324,16 @@ async function main() {
       await runDrill({
         script: flags.script ? scriptFrom(flags, "hiragana") : undefined,
         count: flags.count ? +flags.count : undefined,
+      });
+      break;
+    case "watch":
+      // The tmux-free integration: run this in any terminal split (VS Code,
+      // iTerm, whatever) next to a plain `claude`. It idles quietly and starts
+      // dealing cards the moment any Claude session begins thinking — the
+      // hooks report state per Claude session, no tmux involved.
+      await runDrill({
+        script: flags.script ? scriptFrom(flags, "hiragana") : undefined,
+        watch: true,
       });
       break;
     case "reset":

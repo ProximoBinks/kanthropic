@@ -52,6 +52,21 @@ describe("install / uninstall reversibility", () => {
     expect(existsSync(settingsPath(home))).toBe(false);
   });
 
+  it("actually chains a captured status line (runs it, output in front)", () => {
+    writeFileSync(settingsPath(home), JSON.stringify({
+      statusLine: { type: "command", command: "echo MY-HUD" },
+    }), "utf8");
+    run(home, "install");
+    // Run the generated script the way Claude Code does: JSON on stdin.
+    const out = execFileSync("node", [join(home, ".kanthropic", "kanthropic-statusline.mjs")], {
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      input: '{"model":{"display_name":"Test"}}', encoding: "utf8",
+    });
+    expect(out).toContain("MY-HUD");   // the user's HUD ran and leads the line
+    expect(out).toContain("hiragana"); // followed by the kana stats
+    expect(out.indexOf("MY-HUD")).toBeLessThan(out.indexOf("hiragana"));
+  });
+
   it("keeps learning progress across uninstall", () => {
     run(home, "install");
     // seed progress via learn mode (study row 1, then quit)

@@ -6,12 +6,37 @@
  * whitespace, and key order survive. A tiny state machine walks the bytes
  * tracking string / line-comment / block-comment context.
  *
- * This is an independent implementation of the well-known "raw-text minimal
- * edit" technique. (Kickbacks ships a proprietary version; none of its code is
- * used here.)
- *
  * @typedef {"code" | "str" | "line" | "block"} Ctx
  */
+
+/** Per-index map of which characters are semantic JSON text: string contents
+ *  and punctuation are 1; comments and whitespace-outside-strings are 0. Every
+ *  positional scan (root brace, comma hunts) uses this instead of regex or
+ *  indexOf so a `{` or `,` inside a comment/string can never mislead an edit.
+ *  @param {string} src @returns {Uint8Array} */
+function codeMask(src) {
+  const mask = new Uint8Array(src.length);
+  /** @type {Ctx} */ let ctx = "code";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i], n = src[i + 1];
+    if (ctx === "code") {
+      if (c === '"') { ctx = "str"; mask[i] = 1; continue; }
+      if (c === "/" && n === "/") { ctx = "line"; i++; continue; }
+      if (c === "/" && n === "*") { ctx = "block"; i++; continue; }
+      if (!/\s/.test(c)) mask[i] = 1;
+      continue;
+    }
+    if (ctx === "str") {
+      mask[i] = 1;
+      if (c === "\\") { if (i + 1 < src.length) mask[i + 1] = 1; i++; continue; }
+      if (c === '"') ctx = "code";
+      continue;
+    }
+    if (ctx === "line") { if (c === "\n") ctx = "code"; continue; }
+    if (c === "*" && n === "/") { ctx = "code"; i++; }
+  }
+  return mask;
+}
 
 /** Strip JSONC comments + a single trailing comma so JSON.parse can validate.
  *  Used ONLY for parse/idempotency checks, never for emitted text.
@@ -39,7 +64,33 @@ function stripJsonc(src) {
     if (c === "*" && n === "/") { ctx = "code"; i += 2; continue; }
     i++;
   }
-  return out.replace(/,(\s*[}\]])/g, "$1");
+  return stripTrailingCommas(out);
+}
+
+/** Drop commas whose next non-whitespace char is `}`/`]`, skipping string
+ *  contents (a `,}` inside a string literal must survive). Runs on
+ *  comment-free text, so only string context needs tracking.
+ *  @param {string} s @returns {string} */
+function stripTrailingCommas(s) {
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      out += c;
+      if (c === "\\") { out += s[i + 1] ?? ""; i++; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === ",") {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (s[j] === "}" || s[j] === "]") continue;
+    }
+    out += c;
+  }
+  return out;
 }
 
 /** @param {string} src @returns {boolean} */
@@ -159,7 +210,14 @@ export function readTopLevelRaw(src, key) {
 export function upsertTopLevel(src, key, valueJson) {
   const span = findTopLevelValueSpan(src, key);
   if (span) return src.slice(0, span[0]) + valueJson + src.slice(span[1]);
-  const brace = src.indexOf("{");
+  // The root brace is the first CODE character — found via the mask so a `{`
+  // inside a leading comment (e.g. `// tweaked {config}`) can't be mistaken
+  // for it and have our key spliced into the comment.
+  const mask = codeMask(src);
+  let brace = -1;
+  for (let i = 0; i < src.length; i++) {
+    if (mask[i]) { if (src[i] === "{") brace = i; break; }
+  }
   if (brace < 0) throw new Error("settings.json not parseable");
   const after = src.slice(brace + 1);
   const hasKeys = parseable(src) && /\S/.test(stripJsonc(after).replace(/[}\s]/g, ""));
@@ -176,10 +234,14 @@ export function removeTopLevel(src, key) {
   catch { return src; }
   if (!span) return src;
 
+  // All scans below skip !mask positions, i.e. whitespace AND comments — a
+  // comment sitting between the previous entry's comma and our key must not
+  // stop the comma hunt (that would leave a dangling comma behind).
+  const mask = codeMask(src);
   let s = span[0];
-  while (s > 0 && /\s/.test(src[s - 1])) s--;
+  while (s > 0 && !mask[s - 1]) s--;
   if (s > 0 && src[s - 1] === ":") s--;
-  while (s > 0 && /\s/.test(src[s - 1])) s--;
+  while (s > 0 && !mask[s - 1]) s--;
   if (s > 0 && src[s - 1] === '"') {
     let q = s - 2;
     while (q > 0) { if (src[q] === '"' && src[q - 1] !== "\\") break; q--; }
@@ -189,14 +251,25 @@ export function removeTopLevel(src, key) {
   let e2 = span[1];
   let trailingComma = false;
   let j = e2;
-  while (j < src.length && /\s/.test(src[j])) j++;
+  while (j < src.length && !mask[j]) j++;
   if (src[j] === ",") { e2 = j + 1; trailingComma = true; }
   if (trailingComma) {
     while (s > 0 && /\s/.test(src[s - 1])) s--;
   } else {
     let k = s;
-    while (k > 0 && /\s/.test(src[k - 1])) k--;
+    while (k > 0 && !mask[k - 1]) k--;
     if (k > 0 && src[k - 1] === ",") s = k - 1;
   }
   return src.slice(0, s) + src.slice(e2);
+}
+
+/** The guard every settings.json write must pass: `next` still parses AND its
+ *  top-level `key` deep-equals `expected` (undefined ⇒ the key must be gone).
+ *  Converts any remaining editor bug from "user's config destroyed" into
+ *  "edit refused, file untouched".
+ *  @param {string} next @param {string} key @param {unknown} expected */
+export function verifyTopLevel(next, key, expected) {
+  if (!parseable(next)) return false;
+  try { return JSON.stringify(readTopLevel(next, key)) === JSON.stringify(expected); }
+  catch { return false; }
 }

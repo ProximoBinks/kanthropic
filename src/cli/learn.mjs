@@ -7,10 +7,11 @@
  * menu shows your progress; the drill then reinforces them with FSRS.
  */
 import { stdout } from "node:process";
-import { GROUPS, glyph as glyphOf } from "../data/kana.mjs";
+import { glyph as glyphOf } from "../data/kana.mjs";
 import { mnemonicFor } from "../data/mnemonics.mjs";
-import { load, save } from "../core/store.mjs";
+import { load, save, update } from "../core/store.mjs";
 import { ensureLearned, isMastered, resetGlyphs } from "../core/learned.mjs";
+import { nextUnlearnedRow, rowsFor } from "../core/flow.mjs";
 import { pickRenderer, glyphImage, glyphSixel, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
 import { makeLineReader } from "./lineReader.mjs";
@@ -23,17 +24,7 @@ const c = {
 };
 const CLEAR = "\x1b[2J\x1b[3J\x1b[H";
 
-/** All learnable rows across the groups, flattened with labels. */
-function rowsFor(script) {
-  const rows = [];
-  for (const g of GROUPS) {
-    for (const row of g.rows) {
-      const entries = row.filter(Boolean);
-      if (entries.length) rows.push({ section: g.label, entries });
-    }
-  }
-  return rows;
-}
+export { nextUnlearnedRow, rowsFor };
 
 /** Render a glyph as centered art for the active renderer. @returns {Promise<string>} */
 async function glyphArt(glyph, renderer, cellPx, rows, cols) {
@@ -58,16 +49,6 @@ async function glyphArt(glyph, renderer, cellPx, rows, cols) {
   return c.accent(c.bold(" ".repeat(Math.max(0, (cols >> 1) - 1)) + glyph));
 }
 
-/** The first row not yet fully in the learned pool, or null if all are learned.
- *  @returns {import("../data/kana.mjs").Entry[] | null} that row's entries */
-export function nextUnlearnedRow(store, script) {
-  const learned = new Set(store.learned);
-  for (const r of rowsFor(script)) {
-    if (!r.entries.every((e) => learned.has(glyphOf(e, script)))) return r.entries;
-  }
-  return null;
-}
-
 /**
  * Walk one row's characters (big image + rōmaji + partner + mnemonic) and mark
  * them learned. Shared by `runLearn` and the drill's inline "learn next row",
@@ -77,6 +58,7 @@ export function nextUnlearnedRow(store, script) {
 export async function walkRow({ entries, script, renderer, cellPx, reader }) {
   const other = script === "hiragana" ? "katakana" : "hiragana";
   let quit = false;
+  let viewed = 0;
   for (let j = 0; j < entries.length && !quit; j++) {
     const e = entries[j];
     const glyph = glyphOf(e, script);
@@ -95,15 +77,17 @@ export async function walkRow({ entries, script, renderer, cellPx, reader }) {
     stdout.write(`  ${mnemonicFor(e, glyph)}\n\n`);
     stdout.write(c.dim(`  ${j + 1}/${entries.length}   [Enter] next  ·  [q] stop\n`));
 
-    const k = (await reader.next(""))?.trim().toLowerCase();
-    if (k === null || k === "q") quit = true;
+    const raw = await reader.next("");
+    if (raw === null || raw.trim().toLowerCase() === "q") quit = true;
+    viewed = j + 1;
   }
-  // Selecting a row commits the whole row to the pool (drilling refines it).
-  const fresh = load();
-  const set = new Set(fresh.learned);
-  for (const e of entries) set.add(glyphOf(e, script));
-  fresh.learned = [...set];
-  save(fresh);
+  // Commit only the characters actually SHOWN to the pool. Quitting one glyph
+  // into a row must not enroll the four you never saw — the learned-pool
+  // contract is that the drill never ambushes you with an unseen character.
+  const toCommit = entries.slice(0, viewed).map((e) => glyphOf(e, script));
+  if (toCommit.length) {
+    update((s) => { s.learned = [...new Set([...s.learned, ...toCommit])]; });
+  }
   return !quit;
 }
 
@@ -112,6 +96,7 @@ export async function runLearn(opts) {
   // `script`/`other` are mutable so `s` can swap scripts without leaving the
   // menu. The row layout (rowsFor) is the same for both scripts.
   let script = opts.script;
+  /** @type {import("../data/kana.mjs").Script} */
   let other = script === "hiragana" ? "katakana" : "hiragana";
   const m0 = load(); if (ensureLearned(m0)) save(m0); // existing cards count as learned
   const renderer = pickRenderer(load().config.image || "auto");
@@ -148,8 +133,10 @@ export async function runLearn(opts) {
       stdout.write(`  ${c.bold("number")} study · ${c.bold("-number")} reset row · `
         + `${c.bold("s")} switch to ${other} · ${c.bold("q")} quit\n  → `);
 
-      const sel = (await reader.next(""))?.trim().toLowerCase();
-      if (sel === null || sel === "q" || sel === "quit") break;
+      const selRaw = await reader.next("");
+      if (selRaw === null) break; // EOF/Ctrl-C
+      const sel = selRaw.trim().toLowerCase();
+      if (sel === "q" || sel === "quit") break;
       // `s` (or naming the script) swaps without leaving the menu.
       if (sel === "s" || sel === "h" || sel === "k" || sel === other) {
         script = sel === "h" || sel === "hiragana" ? "hiragana"
@@ -162,9 +149,8 @@ export async function runLearn(opts) {
       if (sel.startsWith("-")) {
         const ri = parseInt(sel.slice(1), 10) - 1;
         if (ri >= 0 && ri < rows.length) {
-          const fresh = load();
-          resetGlyphs(fresh, rows[ri].entries.map((e) => glyphOf(e, script)));
-          save(fresh);
+          const glyphs = rows[ri].entries.map((e) => glyphOf(e, script));
+          update((s) => { resetGlyphs(s, glyphs); });
         }
         continue;
       }

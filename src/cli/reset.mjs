@@ -10,7 +10,7 @@
  */
 import { stdout } from "node:process";
 import { ENTRIES, glyph as glyphOf } from "../data/kana.mjs";
-import { load, save } from "../core/store.mjs";
+import { load, update } from "../core/store.mjs";
 import { resetGlyphs } from "../core/learned.mjs";
 import { makeLineReader } from "./lineReader.mjs";
 
@@ -47,16 +47,15 @@ export async function runReset(opts = {}) {
 
   if (!opts.yes) {
     const reader = makeLineReader();
-    stdout.write(`${c.red("⚠")}  This forgets ${c.bold(`${have} learned ${label}`)} `
-      + `${c.dim("(FSRS progress + the learned pool). This can't be undone.")}\n`);
+    stdout.write(`${c.red("⚠")}  This forgets ${c.bold(`${have} learned character${have === 1 ? "" : "s"}`)} `
+      + `${c.dim(`(${label} — FSRS progress + the learned pool). This can't be undone.`)}\n`);
     const ans = (await reader.next(`   Type ${c.bold("yes")} to confirm → `))?.trim().toLowerCase();
     reader.close();
     if (ans !== "yes" && ans !== "y") { stdout.write(c.dim("Cancelled.\n")); return; }
   }
 
-  const store = load();
-  const n = resetGlyphs(store, glyphs);
-  save(store);
+  let n = 0;
+  update((store) => { n = resetGlyphs(store, glyphs); });
   stdout.write(`${c.green("✓")} reset ${c.bold(`${n} ${label}`)}. `
     + c.dim("Run `kanthropic learn` to start again.\n"));
 }

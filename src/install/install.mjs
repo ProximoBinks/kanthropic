@@ -1,11 +1,11 @@
 /**
  * Installer / uninstaller for the ambient status-line surface.
  *
- * Edits `~/.claude/settings.json` with the same care Kickbacks takes (our own
- * implementation): a one-time byte-exact backup, minimal-diff JSONC edits that
- * preserve the user's other keys + comments, chain-capture of any pre-existing
- * statusLine, and a fully reversible, KEY-SCOPED uninstall that never clobbers
- * settings the user changed after install.
+ * Edits `~/.claude/settings.json` carefully: a one-time byte-exact backup,
+ * minimal-diff JSONC edits that preserve the user's other keys + comments,
+ * chain-capture of any pre-existing statusLine (the generated script runs it
+ * and shows its output in front of the kana stats), and a fully reversible,
+ * KEY-SCOPED uninstall that never clobbers settings changed after install.
  */
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, rmSync,
@@ -13,12 +13,14 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  parseable, readTopLevel, readTopLevelRaw, upsertTopLevel, removeTopLevel,
+  parseable, readTopLevel, readTopLevelRaw, upsertTopLevel, removeTopLevel, verifyTopLevel,
 } from "../core/jsonc.mjs";
 import {
   KANTHROPIC_DIR, STATUSLINE_SCRIPT_PATH, PREV_STATUSLINE_PATH,
   CLAUDE_SETTINGS_PATH, CLAUDE_SETTINGS_BACKUP_PATH, ABSENT_SENTINEL,
 } from "../core/paths.mjs";
+import { writeAtomic } from "../core/fsutil.mjs";
+import { hooksInstalled } from "../core/hooks.mjs";
 
 const PKG_SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TEMPLATE_PATH = resolve(PKG_SRC, "install/statusline.tpl.mjs");
@@ -27,10 +29,11 @@ const SCRIPT_MARK = "kanthropic-statusline";
 /** A command-type statusLine that is not ours (chain-capturable).
  *  @param {unknown} v @returns {v is { type: string, command: string }} */
 function isForeignStatusLine(v) {
-  return !!v && typeof v === "object"
-    && v.type === "command"
-    && typeof v.command === "string"
-    && !v.command.includes(SCRIPT_MARK);
+  const o = /** @type {any} */ (v);
+  return !!o && typeof o === "object"
+    && o.type === "command"
+    && typeof o.command === "string"
+    && !o.command.includes(SCRIPT_MARK);
 }
 
 /** The JSON value we write for our statusLine entry. @returns {string} */
@@ -84,7 +87,11 @@ export function install() {
 
     const base = pristine ?? "{\n}\n";
     const next = upsertTopLevel(base, "statusLine", ourStatusLineValue());
-    if (!existed || next !== pristine) writeFileSync(CLAUDE_SETTINGS_PATH, next, "utf8");
+    // Never write an edit we can't read back intact.
+    if (!verifyTopLevel(next, "statusLine", JSON.parse(ourStatusLineValue()))) {
+      return { ok: false, reason: "refusing to write: edited settings.json failed validation (file untouched)." };
+    }
+    if (!existed || next !== pristine) writeAtomic(CLAUDE_SETTINGS_PATH, next);
 
     return { ok: true, chained };
   } catch (e) {
@@ -106,7 +113,7 @@ export function uninstall() {
       if (!parseable(cur)) {
         return { ok: false, restored: false, reason: "settings.json not parseable — left untouched." };
       }
-      const curSl = readTopLevel(cur, "statusLine");
+      const curSl = /** @type {any} */ (readTopLevel(cur, "statusLine"));
       const isOurs = !!curSl && typeof curSl === "object"
         && typeof curSl.command === "string" && curSl.command.includes(SCRIPT_MARK);
 
@@ -133,12 +140,21 @@ export function uninstall() {
       if (backup === ABSENT_SENTINEL && emptyShell) {
         rmSync(CLAUDE_SETTINGS_PATH);
       } else if (next !== cur) {
-        writeFileSync(CLAUDE_SETTINGS_PATH, next, "utf8");
+        if (!parseable(next)) {
+          return { ok: false, restored: false, reason: "refusing to write: edited settings.json failed validation (file untouched)." };
+        }
+        writeAtomic(CLAUDE_SETTINGS_PATH, next);
       }
     }
 
-    for (const p of [STATUSLINE_SCRIPT_PATH, PREV_STATUSLINE_PATH, CLAUDE_SETTINGS_BACKUP_PATH]) {
+    for (const p of [STATUSLINE_SCRIPT_PATH, PREV_STATUSLINE_PATH]) {
       if (existsSync(p)) rmSync(p);
+    }
+    // The settings backup (and its ABSENT sentinel) is SHARED with the hooks
+    // installer — deleting it while hooks are still installed would strand an
+    // empty `{}` settings.json after the later hooks-uninstall.
+    if (!hooksInstalled() && existsSync(CLAUDE_SETTINGS_BACKUP_PATH)) {
+      rmSync(CLAUDE_SETTINGS_BACKUP_PATH);
     }
     return { ok: true, restored: true };
   } catch (e) {
@@ -150,7 +166,7 @@ export function uninstall() {
 export function isInstalled() {
   try {
     if (!existsSync(CLAUDE_SETTINGS_PATH)) return false;
-    const sl = readTopLevel(readFileSync(CLAUDE_SETTINGS_PATH, "utf8"), "statusLine");
+    const sl = /** @type {any} */ (readTopLevel(readFileSync(CLAUDE_SETTINGS_PATH, "utf8"), "statusLine"));
     return !!sl && typeof sl === "object" && typeof sl.command === "string" && sl.command.includes(SCRIPT_MARK);
   } catch {
     return false;

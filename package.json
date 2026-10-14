@@ -1,7 +1,7 @@
 {
   "name": "kanthropic",
-  "version": "0.1.5",
-  "description": "Learn hiragana & katakana in the dead time while Claude Code is thinking — a kana flashcard pane that pops up beside Claude while it works.",
+  "version": "0.2.0",
+  "description": "Learn hiragana & katakana in the dead time while Grok thinks — a macOS menu bar flashcard that pops up while Grok Build works.",
   "type": "module",
   "bin": {
     "kanthropic": "src/cli/index.mjs"
@@ -9,23 +9,32 @@
   "files": [
     "src",
     "assets",
+    "macos/Sources",
+    "macos/Info.plist",
+    "macos/build.sh",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit --allowJs --checkJs -p jsconfig.json || true",
-    "prepublishOnly": "vitest run"
+    "typecheck": "tsc -p jsconfig.json",
+    "app": "node src/cli/index.mjs app",
+    "build:engine": "esbuild src/core/engine.mjs --bundle --format=iife --global-name=Kanthropic --platform=neutral --target=es2020 --outfile=macos/Resources/engine.js",
+    "build:app": "bash macos/build.sh",
+    "prepublishOnly": "vitest run && tsc -p jsconfig.json"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "chafa-wasm": "^0.3.3",
+    "esbuild": "^0.25.12",
     "opentype.js": "^2.0.0",
     "ts-fsrs": "^5.4.1"
   },
   "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
     "vitest": "^2.0.5"
   },
   "keywords": [
@@ -36,11 +45,11 @@
     "flashcards",
     "fsrs",
     "spaced-repetition",
-    "claude",
-    "claude-code",
-    "cli",
-    "tmux",
-    "terminal"
+    "grok",
+    "grok-build",
+    "macos",
+    "menubar",
+    "cli"
   ],
   "repository": {
     "type": "git",

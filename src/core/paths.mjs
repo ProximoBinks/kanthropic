@@ -18,9 +18,14 @@ export const STATUSLINE_SCRIPT_PATH = join(KANTHROPIC_DIR, "kanthropic-statuslin
  *  card above the user's own HUD instead of clobbering it. */
 export const PREV_STATUSLINE_PATH = join(KANTHROPIC_DIR, "prev-statusline.json");
 
-/** Tiny file the Claude hooks write ("thinking"/"idle") and the drill watches,
- *  so the side-pane input box reacts to whether Claude is working. */
+/** Legacy single-file thinking/idle state (pre per-session hooks). Still read
+ *  as a fallback so old installed hooks keep lighting the dot up. */
 export const SESSION_STATE_PATH = join(KANTHROPIC_DIR, "session-state.json");
+
+/** Per-Claude-session thinking/idle state, one file per session_id — written
+ *  by the hooks for EVERY Claude session (tmux or not), so `kanthropic watch`
+ *  and the standalone drill can react without any tmux involved. */
+export const STATE_DIR = join(KANTHROPIC_DIR, "state");
 
 /** Per-session state lives here, keyed by tmux session name, so multiple
  *  concurrent `kanthropic session` windows each track their own kana pane. */
@@ -30,6 +35,13 @@ export function sessionPanePath(name) { return join(SESSIONS_DIR, `${name}.pane`
 /** The default tmux session name. Named sessions are `kanthropic-<name>`; the
  *  hooks treat any session whose name starts with `kanthropic` as ours. */
 export const TMUX_SESSION = "kanthropic";
+
+/** Grok Build's global hooks dir — one file per installer, merged on load. */
+export const GROK_HOOKS_DIR = join(home, ".grok", "hooks");
+/** Our hook spec. Dropping this file is install; deleting it is uninstall. */
+export const GROK_HOOK_PATH = join(GROK_HOOKS_DIR, "kanthropic.json");
+/** Copied helper the Grok hook command runs. */
+export const GROK_HOOK_SCRIPT = join(KANTHROPIC_DIR, "grok-hook.sh");
 
 /** Claude Code's settings file — the surface we edit. */
 export const CLAUDE_SETTINGS_PATH = join(home, ".claude", "settings.json");

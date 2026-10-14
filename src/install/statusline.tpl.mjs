@@ -10,14 +10,31 @@
  * `__PKG_SRC__` is substituted by the installer with the absolute path to the
  * package `src/` dir so these imports resolve regardless of cwd.
  */
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { load } from "__PKG_SRC__/core/store.mjs";
 import { ENTRIES, glyph as glyphOf } from "__PKG_SRC__/data/kana.mjs";
+import { PREV_STATUSLINE_PATH } from "__PKG_SRC__/core/paths.mjs";
 
 const V = "\x1b[38;5;176m"; // violet accent
 const D = "\x1b[2m";        // dim
 const G = "\x1b[32m";       // green (learned)
 const A = "\x1b[38;5;179m"; // amber (due)
 const R = "\x1b[0m";
+
+// Chain a pre-existing status line the installer captured: run the user's own
+// command with the same stdin JSON Claude passes us and put its first line IN
+// FRONT of the kana stats — install must never silently eat someone's HUD.
+let prevOut = "";
+try {
+  const cap = JSON.parse(readFileSync(PREV_STATUSLINE_PATH, "utf8"));
+  const cmd = cap && cap.statusLine && cap.statusLine.command;
+  if (typeof cmd === "string" && cmd.trim()) {
+    const stdinJson = process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+    const r = spawnSync("/bin/sh", ["-c", cmd], { input: stdinJson, encoding: "utf8", timeout: 1500 });
+    prevOut = ((r.stdout || "").split("\n")[0] || "").trim();
+  }
+} catch { /* no chained HUD — kana stats alone */ }
 
 try {
   const store = load();
@@ -49,7 +66,7 @@ try {
     `${toGo} to go`,
     `${D}${acc}%${R}`,
   ];
-  process.stdout.write(parts.join(` ${dot} `));
+  process.stdout.write((prevOut ? `${prevOut} ${dot} ` : "") + parts.join(` ${dot} `));
 } catch {
   /* prime directive: never break the status line */
 }

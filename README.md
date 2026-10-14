@@ -1,285 +1,86 @@
 <h1 align="center">kanthropic</h1>
 
-<p align="center"><em>Learn hiragana &amp; katakana in the dead time while Claude Code is thinking.</em></p>
+<p align="center"><em>Learn hiragana &amp; katakana in the dead time while Grok thinks.</em></p>
 
 ---
 
-`kanthropic` turns the seconds you spend waiting on Claude Code into kana practice.
-Run `kanthropic session` and you get a tmux layout where **Claude is on top** and a
-**kana flashcard pane pops up underneath the moment Claude starts thinking** — type
-the rōmaji, and it closes again when Claude is done. Your keyboard focus auto-switches
-between the two. On terminals that support inline images, the kana render as **real,
-crisp glyphs** (not ASCII art).
+`kanthropic` is a **macOS menu bar app**. Click **あ** for a flashcard; type the rōmaji. While [Grok Build](https://grok.x.ai) is working, the card pops up on its own — same idea as the old Claude/tmux pane, without any of that wiring.
 
-It's spaced-repetition backed ([FSRS](https://github.com/open-spaced-repetition/ts-fsrs)),
-so it surfaces the characters you don't know yet, and your progress shows in the Claude
-status line.
+Two modes, that's the whole product:
+
+- **Learn** — the next row, one character at a time, with the reading and a mnemonic. Then those glyphs enter your deck.
+- **Revise** — FSRS-backed drill of what you've learned. Due cards first; when you're caught up it **keeps going** on the set you're still learning, then the whole deck. No check-in menu, no `/f` `/r` `/s`.
+
+Progress lives in `~/.kanthropic/progress.json` and is shared with the CLI.
 
 ```
-┌─────────────────────────────┐
-│  claude  >  explain promises │   ← you ask Claude something
-│  ⋯ thinking ⋯                │
-├─────────────────────────────┤
-│            ┌──┐             │
-│            ばば              │   ← kana pane opens below while it thinks
-│            └──┘             │
-│  → ba ✓                     │   ← type the reading; focus is here automatically
-└─────────────────────────────┘
+     あ          ← menu bar
+ ┌────────────┐
+ │ learn  revise   あ / ア  │
+ │            │
+ │     き     │
+ │            │
+ │ ki         │  ← type, return
+ └────────────┘
 ```
 
-## Requirements
+## Install (macOS)
 
-- **macOS or Linux** (Windows via WSL) — the session uses tmux
-- **Node.js ≥ 18** (`node -v`)
-- **tmux** built with **sixel** support — for the in-session image rendering.
-  `brew install tmux` on macOS ships a sixel-enabled build (3.5+). Check with:
-  ```sh
-  tmux -V && (strings "$(which tmux)" | grep -qi sixel && echo "sixel: yes" || echo "sixel: no")
-  ```
-  (Without sixel-tmux the session still works — it just falls back to chafa braille.)
-- **Claude Code** CLI (`claude`)
-- An **image-capable terminal** for the crisp rendering (see *Enable images* below). Anything
-  else degrades to chafa braille symbol-art automatically.
-
-A kana font (a subset of [Noto Sans JP](https://github.com/notofonts/noto-cjk), OFL) is
-**bundled** in `assets/fonts/`, so glyphs render with no system font needed. Point
-`KANTHROPIC_FONT=/path/to/font.ttf` to use a different one.
-
-## Install
-
-```sh
-npm install -g kanthropic
-```
-
-Or from source (for development):
 ```sh
 git clone https://github.com/ProximoBinks/kanthropic.git
-cd kanthropic && npm install && npm link   # `npm link` requires keeping the folder put
+cd kanthropic && npm install
+npx kanthropic app          # builds ~/Applications/Kanthropic.app, installs Grok hooks, launches
 ```
 
-## Enable images (VS Code / Antigravity / Cursor)
+Needs **Node 18+** and **Xcode Command Line Tools** (`xcode-select --install`) for the one-time Swift build.
 
-The integrated terminal can show real images, but it's **off by default**. Turn it on:
+Look for **あ** on the right of the menu bar:
 
-1. **`Cmd+Shift+P`** → **“Preferences: Open User Settings (JSON)”** and add:
-   ```json
-   "terminal.integrated.enableImages": true
-   ```
-2. **`Cmd+Shift+P`** → **“Developer: Reload Window”**.
-3. **Open a new terminal** (the setting only applies to terminals opened after the reload).
-4. Confirm it works:
-   ```sh
-   kanthropic imagetest
-   ```
-   If you see a crisp **ば**, you're set. If you see a wall of text instead, images aren't
-   active in this terminal — kanthropic falls back to chafa braille symbol-art (still fine), or run
-   `kanthropic config --image off` to force chafa braille.
+- **Left-click** — flashcard
+- **Right-click** — pop while Grok thinks, open at login, quit
+- **Escape** or click away — dismiss
+- **Return** — grade (revise) / continue (learn)
+- **Drag a window corner** — enlarge the content with sharp text; dismissing resets the size
 
-> Already using a native image terminal (iTerm2, kitty, WezTerm, Ghostty)? Then standalone
-> `kanthropic drill` shows images with no setup. The **session** (tmux) needs sixel-tmux.
+**Drill all → pick a set** saves each character's practice streak and your score for the local calendar day, separately for each script and set. Reopening a set or restarting the app resumes that progress. Characters with three consecutive correct answers leave the practice pool. Daily practice resets at local midnight; learned characters and FSRS review history are preserved.
 
-## Set it up
+Grok hooks live in `~/.grok/hooks/kanthropic.json` (one file; delete it to uninstall). They only write a tiny state file — they do **not** open tmux panes or edit a shared settings.json. The app pops on the idle→thinking edge, once per turn, so it doesn't yank focus on every tool call.
 
 ```sh
-kanthropic setup    # installs the status line + hooks, then prints an environment check
+npx kanthropic grok-uninstall   # remove the hooks; the app still works standalone
 ```
 
-`kanthropic doctor` re-runs that check any time (node, tmux + sixel, font, terminal image
-support, install state). Or do it manually:
+## How practice works
+
+New characters only enter the deck through **Learn** (the next unlearned row, in gojūon order). Revise never ambushes you with a glyph you haven't seen.
+
+A correct answer is FSRS *Good*, a miss is *Again*. A character is **mastered** only after it has graduated to Review **and** been recalled on two separate local days (≥ 8 hours apart) — cramming in one sitting can't fake it.
+
+Hiragana auto-advances to katakana once hiragana is fully mastered. Toggle **あ / ア** any time.
+
+## CLI (optional / Linux)
+
+The same engine, in a terminal:
+
 ```sh
-kanthropic install         # adds a kana progress summary to the Claude status line
-kanthropic hooks-install   # wires Claude hooks so the kana pane auto-opens/closes
+npx kanthropic learn            # pick a row (or `kanthropic app` and click Learn)
+npx kanthropic drill            # revise; q quit · /n next row · /h /k script
+npx kanthropic reset            # wipe progress (asks first)
+npx kanthropic status
 ```
 
-Rendering defaults to **`auto`** — real images where the terminal supports them, chafa braille symbol-art
-otherwise (it never prints garbage). To force it either way:
-```sh
-kanthropic config --image on    # always images (e.g. for recording a demo)
-kanthropic config --image off   # always chafa braille symbol-art
-```
-
-Both edits are **fully reversible** and preserve anything you already had:
-```sh
-kanthropic uninstall        # remove the status line
-kanthropic hooks-uninstall  # remove the hooks
-```
-
-## Use it
-
-**The main flow — kana while you code:**
-```sh
-kanthropic session            # opens tmux: Claude on top, kana pane pops up while it thinks
-kanthropic session --resume   # forwards any args to claude (resume a conversation, etc.)
-```
-Submit a prompt to Claude → the kana pane opens below and focus jumps to it → type rōmaji →
-when Claude finishes, the pane closes and you're back in Claude. Scroll Claude's chat with the
-**mouse wheel** (hold **Option/Shift** to select text).
-
-### Leaving & coming back
-
-The session runs in the background (a tmux server), so it keeps going even after you close the
-terminal.
-
-| You want to… | Do this |
-| --- | --- |
-| **Step away but keep it running** | **`Ctrl-b` then `d`** (detach). Come back with `kanthropic session`. |
-| **Come back to it** | `kanthropic session` (same name) — reattaches to the running session |
-| **Quit Claude** (but stay in the session) | `Ctrl-C` a couple times, or type `/exit` in Claude |
-| **End the session for good** | quit Claude, then type **`exit`** in the shell (closes the pane → ends the session) |
-
-> ⚠️ `exit` **ends** the session (and the running Claude). If you just want to step away, **detach**
-> with `Ctrl-b d` instead — that keeps everything running.
-
-**After a reboot** the tmux session is gone (it lives in RAM), but your **Claude conversation is
-saved** — bring it back with `kanthropic session --resume`. Your kana progress is always on disk.
-
-**Run several windows at once** — give each session a name:
-```sh
-kanthropic session work       # → tmux session "kanthropic-work"
-kanthropic session personal   # → a second, independent session
-```
-Each window gets its **own** Claude pane and its **own** kana pop-up — they open and close
-independently. Your FSRS progress is **shared** across them (one unified schedule in
-`~/.kanthropic/progress.json`). Pass claude args after the name: `kanthropic session work --resume`.
-
-**List or clear sessions:**
-```sh
-kanthropic sessions           # list every running kanthropic session
-kanthropic sessions clear     # end them all at once (asks first; --yes to skip)
-```
-Clearing kills the tmux sessions (and the Claude in each) — your kana progress and Claude
-conversation history are untouched, so `claude --resume` brings a chat back.
-
-**Learn new kana first (any terminal window):**
-```sh
-kanthropic learn              # row-by-row: big image + rōmaji + hira↔kata + a mnemonic
-```
-`learn` is the **only** place new characters enter your rotation. Pick a row, walk it, and it's
-added to your practice pool. Everything else (`drill`, the session pane) only reinforces what
-you've already learned — so you're never ambushed by a character you haven't seen.
-
-The row list reflects your **actual** mastery, drawn from your FSRS deck (so it updates as you
-drill anything): `✓` mastered (every character in the row at FSRS *Review*), `◐ m/n` learning
-(some progress), `·` new. Type `-N` to **reset row N** — forget its cards and pull it out of the
-pool, so it goes back to `· new`. Press `s` to **switch between hiragana and katakana** without
-leaving the menu (or start on one with `kanthropic learn --script katakana`).
-
-**Practice what you've learned (any terminal window):**
-```sh
-kanthropic drill              # endless flashcards, image rendering, FSRS-scored
-kanthropic drill --count 25   # a fixed 25-card session ending in a recap
-kanthropic drill --script katakana
-```
-When you're caught up (nothing due), the drill doesn't auto-add new characters (so it never
-ambushes you with one you haven't been taught). Instead it offers two keys — right there, no
-terminal-switching:
-- **`n` — learn the next row**: runs the proper learn walk (image + mnemonic) for the next
-  un-learned row, then drops you straight back into drilling it. Works from the "nothing learned
-  yet" screen too, so you can start from zero inside the drill/session.
-- **`r` — drill these now / review everything**: when you're **still learning** some characters,
-  this drills just those (not your whole deck), ignoring the FSRS due timers — so a fresh row you
-  just missed doesn't immediately say "caught up", and isn't crowded out by kana you already know.
-  Learning the next row with **`n`** turns this on automatically, and it **auto-stops** once
-  you've mastered the set. Once everything you've learned *is* mastered, the same key becomes
-  **review everything** — drill the whole learned set to self-test that it all still sticks. A `⟳`
-  in the status line marks the mode; your real spaced-repetition schedule isn't affected.
-
-**Never want it to stop?** `kanthropic config --continuous on` turns off the "caught up" break
-entirely: once nothing's due, the drill (and the session pane) keeps grinding the characters
-you're **still learning** — that same small set on its own — and only widens to your whole
-learned set once they're all mastered. The `⟳` shows it's running past the schedule; turn it
-back off with `--continuous off`.
-
-So it isn't an endless grind, it **checks in once you've cleared the set** — each character right
-a few times this run (default 3) — or after ~6 minutes, and asks: learn the next set, keep going,
-or stop. A miss resets that card's count. Make the grind longer or shorter with `kanthropic config
---checkin 5` (reps per card before it asks), or `--checkin off` for truly endless.
-
-> **What counts as "mastered"?** Each card is scheduled by FSRS — a correct answer grades as
-> *Good*, a wrong one as *Again*. A character only counts as mastered once it has **graduated past
-> the learning steps AND been recalled correctly on at least two separate days**. Two passes in one
-> sitting is short-term memory, so it deliberately won't graduate a card — a new card comes back the
-> next day to earn that second day (and a miss resets the streak). This holds even in continuous
-> mode: cramming can't fake mastery, it just keeps the card in rotation until a real second day.
-
-**Switch script mid-drill:** type `/h` or `/k` at the answer prompt to flip between hiragana and
-katakana without restarting — this works in the **session pane** too, and persists as your
-default. (The session otherwise opens on your configured default; set it with `kanthropic config
---script katakana`.)
-
-**Check / tune:**
-```sh
-kanthropic status                       # install state + your progress
-kanthropic config --script katakana     # default script
-kanthropic config --image on|auto|off   # image rendering mode
-kanthropic config --advance off         # disable auto-advance (see below)
-kanthropic config --continuous on       # never stop — drill on until you master it
-kanthropic imagetest ば                  # check image rendering here
-kanthropic reset --script hiragana      # wipe a script's progress (asks first; --yes to skip)
-```
-
-**Hiragana &amp; katakana** are both fully supported (all 104 characters each, with separate
-progress). By default the drill starts on hiragana and **auto-advances to katakana** once
-you've mastered every hiragana (each graduated to FSRS *Review*) — you'll get a 🎉 and it
-switches. Turn that off with `kanthropic config --advance off`, or jump straight in with
-`--script katakana`.
-
-## Commands
-
-| Command | What it does |
-| --- | --- |
-| `setup` | install the status line + hooks, then print the environment check |
-| `doctor` | environment check — node, tmux + sixel, font, terminal image support, install state |
-| `session [name] [claude args]` | tmux layout: Claude + auto-opening kana pane. A `name` makes a separate, independent window; remaining args pass to `claude` |
-| `sessions [clear]` | list running kanthropic sessions; `clear` ends them all at once (`--yes` skips the prompt). Your progress and Claude history are kept |
-| `learn [--script k]` | learn new kana row-by-row (image + rōmaji + partner + mnemonic); the only place characters enter your practice pool. In the menu: `N` study row · `-N` reset row · `s` switch script |
-| `drill [--script k] [--count N]` | practice your learned kana — endless image flashcards, or `--count N` for a fixed scored session with a recap. At the prompt: `/h` `/k` switch script. When caught up: `n` learn next row · `r` drill what you're still learning (or review everything once mastered) |
-| `reset [--script k] [--yes]` | wipe FSRS progress + the learned pool for a clean slate (both scripts unless `--script`); asks before deleting |
-| `install` / `uninstall` | add / remove the kana progress status line |
-| `hooks-install` / `hooks-uninstall` | wire / remove the auto-open-pane hooks |
-| `status` | install state + progress per script |
-| `config [opts]` | set `--script`, `--image on\|auto\|off`, `--advance on\|off`, `--continuous on\|off` (never stop at "caught up"), `--checkin N` (check-in once each card's right N times, 0=off), `--front`/`--back` ms |
-| `imagetest [glyph]` | check image rendering here (else the drill uses chafa braille) |
-
-## How it works
-
-- **Hooks** in `~/.claude/settings.json` write a state file and, inside any `kanthropic*` tmux
-  session, open/close that session's kana pane (tracked per session in `~/.kanthropic/sessions/`,
-  so multiple windows stay independent). `UserPromptSubmit` opens it; `Stop` closes it. When
-  Claude **pauses to ask you something** (a tool-permission prompt or MCP elicitation) the
-  `Notification` hook closes the pane so you can answer, and the next `PreToolUse` reopens it once
-  Claude resumes. The open script is idempotent, so the frequent `PreToolUse` calls never thrash
-  the pane.
-- **Rendering** rasterizes the font outline (opentype.js) and emits a **sixel** image inside
-  tmux (which stores it in its grid so it survives redraws), an **iTerm2** image standalone,
-  or **chafa braille symbol-art** as a universal fallback.
-- **Scheduling** uses real FSRS (`ts-fsrs`); progress lives in `~/.kanthropic/progress.json`,
-  shared across all sessions (atomic writes, so concurrent windows never corrupt it).
-- **A learned pool gates the drill** — `learn` is the only way a character enters rotation, so
-  the drill and session pane only ever reinforce kana you've deliberately studied. The `learn`
-  row icons read your live FSRS state (`✓` mastered / `◐` learning / `·` new), and `reset` (or
-  `-N` in the menu) clears it back out.
-- Everything is **reversible** — the status line and hooks are removed cleanly, preserving any
-  config you already had, and your progress is kept.
+Legacy Claude/tmux (`session`, `watch`, `hooks-install`) still exists if you want it. The menu bar app is the supported path.
 
 ## Uninstall
 
+Right-click **あ** → Quit. Then:
+
 ```sh
-kanthropic uninstall
-kanthropic hooks-uninstall
-npm unlink -g kanthropic        # remove the global command
+npx kanthropic grok-uninstall
+rm -rf ~/Applications/Kanthropic.app
 ```
-Your progress (`~/.kanthropic/progress.json`) is kept unless you delete `~/.kanthropic`.
 
-## Notes / troubleshooting
-
-- **Image shows as garbled text** → images aren't active in that terminal. Enable them (above)
-  or `kanthropic config --image off`.
-- **Session shows chafa braille symbol-art instead of images** → run `kanthropic config --image on` to force
-  it (auto-detection can miss when a session is reattached from another window).
-- **Can't scroll Claude's chat in the session** → the session enables `mouse on`; scroll the
-  Claude pane with the wheel (hold **Option/Shift** to select text).
-- **`tmux is not installed`** → `brew install tmux`.
+Progress stays in `~/.kanthropic` until you delete that folder.
 
 ## Tests
 

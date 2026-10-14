@@ -220,7 +220,10 @@ export function probeCellHeight(timeoutMs = 200) {
     stdin.resume();
     stdin.on("data", onData);
     stdout.write("\x1b[14t");
-    const timer = setTimeout(() => finish(0), timeoutMs);
+    // On timeout, keep draining briefly before giving up — a LATE terminal
+    // reply would otherwise land in the line reader and pollute the first
+    // answer (graded wrong) with raw `\x1b[4;…t` bytes.
+    const timer = setTimeout(() => setTimeout(() => finish(0), 150), timeoutMs);
   });
 }
 

@@ -1,7 +1,10 @@
 node_modules/
 .DS_Store
 *.log
+macos/build/
+macos/Resources/engine.js
 
-# Reference material only — the proprietary Kickbacks extension we studied for
-# the settings-editing technique. Not part of kanthropic; never published.
+# Local-only working material — never part of the package or repo history.
 kickbacks.ai-main/
+launch-video/
+kanthropic-vscode/

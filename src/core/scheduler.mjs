@@ -1,7 +1,7 @@
 /**
  * FSRS scheduling for the typed drill — the same engine the hypertools kana
- * app uses (`ts-fsrs`). Imported ONLY by the `study` command, never by the
- * ambient status-line tick, so the hot path stays dependency-free and fast.
+ * app uses (`ts-fsrs`). Imported ONLY by the drill, never by the ambient
+ * status-line tick, so the hot path stays dependency-free and fast.
  *
  * @typedef {import("./store.mjs").CardState} CardState
  * @typedef {import("../data/kana.mjs").Script} Script
@@ -17,8 +17,15 @@ import { MASTER_DAYS, MASTERED_STATE } from "./learned.mjs";
 const f = fsrs(generatorParameters({ enable_fuzz: true, learning_steps: ["1m", "10m", "1d"] }));
 
 const DAY_MS = 86_400_000;
-/** UTC day index for `ms` — used to count *distinct* days a card was recalled. */
-const dayOf = (ms) => Math.floor(ms / DAY_MS);
+/** LOCAL-timezone day index for `ms` — used to count *distinct* days a card
+ *  was recalled. Local, not UTC: for most of the world UTC midnight lands in
+ *  the middle of the local day (9 AM in Tokyo, 4–8 PM in the US), which would
+ *  let one afternoon+evening sitting count as "two days". */
+const dayOf = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60_000) / DAY_MS);
+
+/** Minimum gap between two reviews that count as separate days, so 23:59 →
+ *  00:01 (or a DST shift / travel) can't fake the second day. ~a night's sleep. */
+const MIN_DAY_GAP_MS = 8 * 3_600_000;
 
 /** Reconstruct a ts-fsrs Card from a stored row (ms → Date), or start fresh.
  *  @param {CardState | undefined} c @param {Date} now */
@@ -65,22 +72,31 @@ export function gradeCard(script, glyph, prev, correct, now = new Date()) {
 
   // Track the number of DISTINCT days the card was recalled correctly. A card
   // counts as mastered only once this reaches MASTER_DAYS (see isMastered), so
-  // two passes in one sitting can't fake it. Cards from before this field
-  // existed are treated as already proven, so they aren't demoted.
-  const today = dayOf(now.getTime());
+  // two passes in one sitting can't fake it. A day only counts when it's a new
+  // LOCAL calendar day AND ≥ MIN_DAY_GAP_MS since the last counted one; the
+  // anchor (lastGoodDay/lastGoodAt) advances only on a counted day, so a
+  // just-under-the-gap review doesn't push the next chance further out.
+  // Cards from before this field existed are treated as already proven.
+  const nowMs = now.getTime();
+  const today = dayOf(nowMs);
   const priorGoodDays = prev?.goodDays ?? ((prev?.state ?? 0) >= MASTERED_STATE ? MASTER_DAYS : 0);
-  let goodDays, lastGoodDay;
+  let goodDays, lastGoodDay, lastGoodAt;
   if (correct) {
-    goodDays = today !== prev?.lastGoodDay ? priorGoodDays + 1 : priorGoodDays;
-    lastGoodDay = today;
+    const newDay = today !== prev?.lastGoodDay
+      && (prev?.lastGoodAt == null || nowMs - prev.lastGoodAt >= MIN_DAY_GAP_MS);
+    goodDays = newDay ? priorGoodDays + 1 : priorGoodDays;
+    lastGoodDay = newDay || prev?.lastGoodDay == null ? today : prev.lastGoodDay;
+    lastGoodAt = newDay || prev?.lastGoodAt == null ? nowMs : prev.lastGoodAt;
   } else {
     goodDays = 0;            // a miss breaks the across-days streak
     lastGoodDay = undefined;
+    lastGoodAt = undefined;
   }
 
   return {
     goodDays,
     lastGoodDay,
+    lastGoodAt,
     script,
     romaji,
     due: next.due.getTime(),

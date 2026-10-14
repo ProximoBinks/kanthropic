@@ -34,7 +34,7 @@ export const GOJUON_ROWS = [
 export const DAKUTEN_ROWS = [
   [e("が", "ガ", "ga"), e("ぎ", "ギ", "gi"), e("ぐ", "グ", "gu"), e("げ", "ゲ", "ge"), e("ご", "ゴ", "go")],
   [e("ざ", "ザ", "za"), e("じ", "ジ", "ji", "zi"), e("ず", "ズ", "zu"), e("ぜ", "ゼ", "ze"), e("ぞ", "ゾ", "zo")],
-  [e("だ", "ダ", "da"), e("ぢ", "ヂ", "ji", "di", "dji"), e("づ", "ヅ", "zu", "du"), e("で", "デ", "de"), e("ど", "ド", "do")],
+  [e("だ", "ダ", "da"), e("ぢ", "ヂ", "ji", "di", "dji"), e("づ", "ヅ", "zu", "du", "dzu"), e("で", "デ", "de"), e("ど", "ド", "do")],
   [e("ば", "バ", "ba"), e("び", "ビ", "bi"), e("ぶ", "ブ", "bu"), e("べ", "ベ", "be"), e("ぼ", "ボ", "bo")],
   [e("ぱ", "パ", "pa"), e("ぴ", "ピ", "pi"), e("ぷ", "プ", "pu"), e("ぺ", "ペ", "pe"), e("ぽ", "ポ", "po")],
 ];
@@ -43,7 +43,7 @@ export const DAKUTEN_ROWS = [
 export const YOON_ROWS = [
   [e("きゃ", "キャ", "kya"), e("きゅ", "キュ", "kyu"), e("きょ", "キョ", "kyo")],
   [e("しゃ", "シャ", "sha", "sya"), e("しゅ", "シュ", "shu", "syu"), e("しょ", "ショ", "sho", "syo")],
-  [e("ちゃ", "チャ", "cha", "tya", "cya"), e("ちゅ", "チュ", "chu", "tyu"), e("ちょ", "チョ", "cho", "tyo")],
+  [e("ちゃ", "チャ", "cha", "tya", "cya"), e("ちゅ", "チュ", "chu", "tyu", "cyu"), e("ちょ", "チョ", "cho", "tyo", "cyo")],
   [e("にゃ", "ニャ", "nya"), e("にゅ", "ニュ", "nyu"), e("にょ", "ニョ", "nyo")],
   [e("ひゃ", "ヒャ", "hya"), e("ひゅ", "ヒュ", "hyu"), e("ひょ", "ヒョ", "hyo")],
   [e("みゃ", "ミャ", "mya"), e("みゅ", "ミュ", "myu"), e("みょ", "ミョ", "myo")],
@@ -59,6 +59,142 @@ export const GROUPS = [
   { id: "gojuon", label: "Gojūon", rows: GOJUON_ROWS },
   { id: "dakuten", label: "Dakuten", rows: DAKUTEN_ROWS },
   { id: "yoon", label: "Yōon", rows: YOON_ROWS },
+];
+
+/**
+ * Base → voiced/p-sound pairs for the dakuten drill.
+ * ka/sa/ta/ha rows zip onto が/ざ/だ/ば, plus ha → ぱ (handakuten).
+ * @typedef {{ baseHira: string, baseKata: string, baseRomaji: string, voicedHira: string, voicedKata: string, voicedRomaji: string, voicedAlt: string[], mark: "゛" | "゜" }} DakutenPair
+ */
+function zipVoice(baseRow, voicedRow, mark) {
+  /** @type {DakutenPair[]} */
+  const out = [];
+  for (let i = 0; i < baseRow.length; i++) {
+    const b = baseRow[i], v = voicedRow[i];
+    if (!b || !v) continue;
+    out.push({
+      baseHira: b.hira, baseKata: b.kata, baseRomaji: b.romaji,
+      voicedHira: v.hira, voicedKata: v.kata, voicedRomaji: v.romaji,
+      voicedAlt: v.alt ?? [],
+      mark,
+    });
+  }
+  return out;
+}
+
+/**
+ * Voiced rows sit with their unvoiced family: ka/ga, sa/za, ta/da, ha/ba, ha/pa.
+ * @typedef {{ id: string, label: string, mark: "゛" | "゜", pairs: DakutenPair[] }} DakutenGroup
+ */
+export const DAKUTEN_GROUPS = [
+  { id: "ka", label: "ka → ga", mark: "゛", pairs: zipVoice(GOJUON_ROWS[1], DAKUTEN_ROWS[0], "゛") },
+  { id: "sa", label: "sa → za", mark: "゛", pairs: zipVoice(GOJUON_ROWS[2], DAKUTEN_ROWS[1], "゛") },
+  { id: "ta", label: "ta → da", mark: "゛", pairs: zipVoice(GOJUON_ROWS[3], DAKUTEN_ROWS[2], "゛") },
+  { id: "ha", label: "ha → ba", mark: "゛", pairs: zipVoice(GOJUON_ROWS[5], DAKUTEN_ROWS[3], "゛") },
+  { id: "pa", label: "ha → pa", mark: "゜", pairs: zipVoice(GOJUON_ROWS[5], DAKUTEN_ROWS[4], "゜") },
+];
+
+/** @type {DakutenPair[]} */
+export const DAKUTEN_PAIRS = DAKUTEN_GROUPS.flatMap((g) => g.pairs);
+
+/**
+ * Dakuten drill: the mark is the lesson. Regular cards are consonant
+ * shifts (T→D). Exceptions are the mora that don't follow the letter.
+ *
+ * @typedef {{
+ *   id: string,
+ *   kind: "rule" | "exception",
+ *   mark: "゛" | "゜",
+ *   prompt: string,
+ *   promptRomaji?: string,
+ *   promptIsKana: boolean,
+ *   reveal: string,
+ *   answers: string[],
+ *   exampleFrom: string,
+ *   exampleTo: string,
+ *   caption: string,
+ * }} DakutenLesson
+ */
+export const DAKUTEN_LESSONS = [
+  {
+    id: "t-d", kind: "rule", mark: "゛", prompt: "T", promptIsKana: false,
+    reveal: "D", answers: ["d", "da", "de", "do"],
+    exampleFrom: "た", exampleTo: "だ",
+    caption: "ta te to",
+  },
+  {
+    id: "k-g", kind: "rule", mark: "゛", prompt: "K", promptIsKana: false,
+    reveal: "G", answers: ["g", "ga", "gi", "gu", "ge", "go"],
+    exampleFrom: "か", exampleTo: "が",
+    caption: "ka ki ku ke ko",
+  },
+  {
+    id: "h-b", kind: "rule", mark: "゛", prompt: "H", promptIsKana: false,
+    reveal: "B", answers: ["b", "ba", "bi", "bu", "be", "bo"],
+    exampleFrom: "は", exampleTo: "ば",
+    caption: "ha hi he ho",
+  },
+  {
+    id: "h-p", kind: "rule", mark: "゜", prompt: "H", promptIsKana: false,
+    reveal: "P", answers: ["p", "pa", "pi", "pu", "pe", "po"],
+    exampleFrom: "は", exampleTo: "ぱ",
+    caption: "the circle is a p-sound",
+  },
+  {
+    id: "s-z", kind: "rule", mark: "゛", prompt: "S", promptIsKana: false,
+    reveal: "Z", answers: ["z", "za", "zu", "ze", "zo"],
+    exampleFrom: "さ", exampleTo: "ざ",
+    caption: "sa su se so",
+  },
+  {
+    id: "chi-ji", kind: "exception", mark: "゛", prompt: "ち", promptRomaji: "chi",
+    promptIsKana: true, reveal: "ji", answers: ["ji", "ぢ", "ヂ"],
+    exampleFrom: "ち", exampleTo: "ぢ",
+    caption: "not di",
+  },
+  {
+    id: "shi-ji", kind: "exception", mark: "゛", prompt: "し", promptRomaji: "shi",
+    promptIsKana: true, reveal: "ji", answers: ["ji", "zi", "じ", "ジ"],
+    exampleFrom: "し", exampleTo: "じ",
+    caption: "not si + ゛",
+  },
+  {
+    id: "tsu-zu", kind: "exception", mark: "゛", prompt: "つ", promptRomaji: "tsu",
+    promptIsKana: true, reveal: "zu", answers: ["zu", "du", "dzu", "づ", "ヅ"],
+    exampleFrom: "つ", exampleTo: "づ",
+    caption: "not du",
+  },
+  {
+    id: "fu-bu", kind: "exception", mark: "゛", prompt: "ふ", promptRomaji: "fu",
+    promptIsKana: true, reveal: "bu", answers: ["bu", "ぶ", "ブ"],
+    exampleFrom: "ふ", exampleTo: "ぶ",
+    caption: "h → b, but ふ is fu",
+  },
+];
+
+/**
+ * Chart families: each unvoiced row stacked with its voiced counterpart(s).
+ * @type {{ id: string, label: string, rows: (KanaEntry|null)[][] }[]}
+ */
+export const CHART_FAMILIES = [
+  { id: "a", label: "a", rows: [GOJUON_ROWS[0]] },
+  { id: "ka", label: "ka / ga", rows: [GOJUON_ROWS[1], DAKUTEN_ROWS[0]] },
+  { id: "sa", label: "sa / za", rows: [GOJUON_ROWS[2], DAKUTEN_ROWS[1]] },
+  { id: "ta", label: "ta / da", rows: [GOJUON_ROWS[3], DAKUTEN_ROWS[2]] },
+  { id: "na", label: "na", rows: [GOJUON_ROWS[4]] },
+  { id: "ha", label: "ha / ba / pa", rows: [GOJUON_ROWS[5], DAKUTEN_ROWS[3], DAKUTEN_ROWS[4]] },
+  { id: "ma", label: "ma", rows: [GOJUON_ROWS[6]] },
+  { id: "ya", label: "ya", rows: [GOJUON_ROWS[7]] },
+  { id: "ra", label: "ra", rows: [GOJUON_ROWS[8]] },
+  { id: "wa", label: "wa", rows: [GOJUON_ROWS[9]] },
+  { id: "n", label: "n", rows: [GOJUON_ROWS[10]] },
+  { id: "kya", label: "kya / gya", rows: [YOON_ROWS[0], YOON_ROWS[7]] },
+  { id: "sha", label: "sha / ja", rows: [YOON_ROWS[1], YOON_ROWS[8]] },
+  { id: "cha", label: "cha", rows: [YOON_ROWS[2]] },
+  { id: "nya", label: "nya", rows: [YOON_ROWS[3]] },
+  { id: "hya", label: "hya / bya / pya", rows: [YOON_ROWS[4], YOON_ROWS[9], YOON_ROWS[10]] },
+  { id: "mya", label: "mya", rows: [YOON_ROWS[5]] },
+  { id: "rya", label: "rya", rows: [YOON_ROWS[6]] },
 ];
 
 /** Flattened, non-null list of every entry with its group.
@@ -88,11 +224,41 @@ function normalize(s) {
   return s.trim().toLowerCase().replace(/\s+/g, "");
 }
 
+/** Fullwidth ASCII (ｋａ, ＞) → halfwidth, so IME leftovers still read as romaji. */
+function halfwidth(s) {
+  return s.replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+}
+
+/**
+ * Drop leading/trailing junk that isn't a letter or kana — "ka>", "ka.", " が! "
+ * still count. Extra *letters* are not stripped: "na" must not pass as ん ("n").
+ * @param {string} s
+ */
+export function peelJunk(s) {
+  return halfwidth(s).trim()
+    .replace(/^[^A-Za-z\u3040-\u30FF\u31F0-\u31FFーゝゞヽヾ]+/, "")
+    .replace(/[^A-Za-z\u3040-\u30FF\u31F0-\u31FFーゝゞヽヾ]+$/, "");
+}
+
+/** @param {string} raw @param {{ romaji: string, alt?: string[], hira?: string, kata?: string }} entry */
+function matchesReading(raw, entry) {
+  const peeled = peelJunk(raw);
+  const forms = [raw.trim(), peeled].filter(Boolean);
+  for (const form of forms) {
+    if (entry.hira && form === entry.hira) return true;
+    if (entry.kata && form === entry.kata) return true;
+    const v = normalize(halfwidth(form));
+    if (!v) continue;
+    if (v === entry.romaji) return true;
+    if ((entry.alt ?? []).some((a) => a === v)) return true;
+  }
+  return false;
+}
+
 /** True if the typed romaji matches the entry's canonical reading or an alternate.
+ *  The glyph itself (hira or kata) also counts — useful when a Japanese IME is on.
+ *  Trailing/leading symbols (ka>, ka.) are ignored; extra letters are not.
  *  @param {string} input @param {KanaEntry} entry @returns {boolean} */
 export function checkAnswer(input, entry) {
-  const v = normalize(input);
-  if (v.length === 0) return false;
-  if (v === entry.romaji) return true;
-  return (entry.alt ?? []).some((a) => a === v);
+  return matchesReading(input, entry);
 }

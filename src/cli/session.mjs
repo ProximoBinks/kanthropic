@@ -80,8 +80,11 @@ function applyTerminalConfig(target = TMUX_SESSION) {
     // mouse wheel scrolls the pane's scrollback (so you can scroll Claude's chat)
     ["set-option", "-t", target, "mouse", "on"],
   ];
-  // Propagate a UTF-8 locale to programs started in the session.
-  const lang = env.LC_ALL || env.LANG || "en_US.UTF-8";
+  // Propagate a UTF-8 locale to programs started in the session — and when the
+  // outer LANG is NOT UTF-8 (e.g. LANG=C), substitute one rather than escalate
+  // the non-UTF-8 locale into LC_ALL.
+  let lang = env.LC_ALL || env.LANG || "en_US.UTF-8";
+  if (!/utf-?8/i.test(lang)) lang = "en_US.UTF-8";
   cmds.push(["set-environment", "-t", target, "LANG", lang]);
   cmds.push(["set-environment", "-t", target, "LC_ALL", lang]);
   for (const args of cmds) {
@@ -126,13 +129,27 @@ export function runSession(name, claudeArgs = []) {
     writeFileSync(sessionPanePath(session), "", "utf8"); // clear any stale pane id
 
     // One pane running Claude (with any pass-through args like --resume); the
-    // hooks open/close the kana pane below it.
-    const claudeCmd = ["claude", ...claudeArgs].join(" ");
-    // Bigger scrollback (history-limit only applies to panes created after it),
-    // set before the session so the Claude pane gets it.
+    // hooks open/close the kana pane below it. The args are typed into an
+    // interactive shell via send-keys, so each one must be single-quoted —
+    // otherwise a multi-word --append-system-prompt gets re-split and anything
+    // like `$(…)` or `;` would execute as shell.
+    const shq = (a) => `'${String(a).replace(/'/g, `'\\''`)}'`;
+    const claudeCmd = ["claude", ...claudeArgs.map(shq)].join(" ");
+    // Bigger scrollback (history-limit only applies to panes created after it,
+    // so it must be global and set BEFORE new-session) — but restore the user's
+    // previous global value afterwards instead of leaking 50000 into all their
+    // other tmux sessions.
+    let prevLimit = null;
+    try {
+      prevLimit = execFileSync("tmux", ["show-options", "-gv", "history-limit"], { encoding: "utf8" }).trim();
+    } catch { /* no server yet — nothing to restore */ }
     try { execFileSync("tmux", ["set-option", "-g", "history-limit", "50000"], { stdio: "ignore" }); }
     catch { /* best-effort */ }
     execFileSync("tmux", ["new-session", "-d", "-s", session, "-n", "kanthropic"]);
+    if (prevLimit && prevLimit !== "50000") {
+      try { execFileSync("tmux", ["set-option", "-g", "history-limit", prevLimit], { stdio: "ignore" }); }
+      catch { /* best-effort */ }
+    }
     applyTerminalConfig(session); // set terminfo/locale BEFORE launching claude
     applyTheme(session);
     execFileSync("tmux", ["send-keys", "-t", `${session}:0`, claudeCmd, "Enter"]);
@@ -148,6 +165,18 @@ export function runSession(name, claudeArgs = []) {
     }
   }
 
+  // Already inside a tmux client (including the kanthropic session itself)?
+  // `attach` would refuse with "sessions should be nested with care" — switch
+  // the current client over instead.
+  if (env.TMUX) {
+    try {
+      execFileSync("tmux", ["switch-client", "-t", session], { stdio: "inherit" });
+      process.exit(0);
+    } catch {
+      stdout.write("\x1b[31m✗ couldn't switch this tmux client to the session.\x1b[0m\n");
+      process.exit(1);
+    }
+  }
   const r = spawnSync("tmux", ["attach", "-t", session], { stdio: "inherit" });
   process.exit(r.status ?? 0);
 }

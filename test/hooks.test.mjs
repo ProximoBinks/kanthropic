@@ -72,4 +72,39 @@ describe("Claude hook wiring", () => {
     expect(hooks.Notification).toBeUndefined();
     expect(hooks.Stop).toBeUndefined();
   });
+
+  it("keeps a user hook that was added INSIDE one of our groups", () => {
+    // Uninstall filters per-hook, not per-group — a user command sitting in
+    // our group must survive even though the group carries our marker.
+    writeFileSync(settings(home), JSON.stringify({
+      hooks: {
+        Stop: [{
+          hooks: [
+            { type: "command", command: "sh x.sh # kanthropic-panel" },
+            { type: "command", command: "echo mine-too" },
+          ],
+        }],
+      },
+    }, null, 2), "utf8");
+    run(home, "hooks-uninstall");
+    const hooks = readTopLevel(readFileSync(settings(home), "utf8"), "hooks");
+    expect(hooks.Stop[0].hooks).toEqual([{ type: "command", command: "echo mine-too" }]);
+  });
+
+  it("full setup then uninstall in EITHER order leaves no empty settings shell", () => {
+    for (const order of [["uninstall", "hooks-uninstall"], ["hooks-uninstall", "uninstall"]]) {
+      const h = mkdtempSync(join(tmpdir(), "kanthropic-order-"));
+      try {
+        // no settings.json at all → both installers share the ABSENT sentinel
+        run(h, "install");
+        run(h, "hooks-install");
+        expect(existsSync(join(h, ".claude", "settings.json"))).toBe(true);
+        run(h, order[0]);
+        run(h, order[1]);
+        expect(existsSync(join(h, ".claude", "settings.json"))).toBe(false); // shell cleaned up
+      } finally {
+        rmSync(h, { recursive: true, force: true });
+      }
+    }
+  });
 });

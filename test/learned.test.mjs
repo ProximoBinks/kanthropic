@@ -86,17 +86,31 @@ describe("learned pool (acquisition → reinforcement gate)", () => {
   });
 
   it("gradeCard counts DISTINCT correct days (cramming one sitting stays at 1)", () => {
-    const d1a = new Date("2026-06-01T10:00:00Z");
-    const d1b = new Date("2026-06-01T20:00:00Z"); // same day, hours later
-    const d2 = new Date("2026-06-02T10:00:00Z");  // next day
+    // LOCAL-time constructors: the day rule is local-calendar-day based, so
+    // these assertions hold in every timezone the tests run in.
+    const d1a = new Date(2026, 5, 1, 10, 0); // June 1, 10:00 local
+    const d1b = new Date(2026, 5, 1, 20, 0); // same local day, 10h later
+    const d2 = new Date(2026, 5, 2, 10, 0);  // next local day, 14h later
     let c = gradeCard("hiragana", "あ", undefined, true, d1a);
     expect(c.goodDays).toBe(1);
     c = gradeCard("hiragana", "あ", c, true, d1b);
-    expect(c.goodDays).toBe(1);                    // same day → no credit
+    expect(c.goodDays).toBe(1);                    // same local day → no credit
     c = gradeCard("hiragana", "あ", c, true, d2);
     expect(c.goodDays).toBe(2);                    // a real second day
     c = gradeCard("hiragana", "あ", c, false, d2);
     expect(c.goodDays).toBe(0);                    // a miss breaks the streak
+  });
+
+  it("gradeCard won't count a midnight-straddling sitting as two days (min gap)", () => {
+    const eve = new Date(2026, 5, 1, 23, 50); // 23:50 local
+    const past = new Date(2026, 5, 2, 0, 10); // 00:10 local — "new day", 20 min later
+    const morn = new Date(2026, 5, 2, 8, 0);  // 8h10m after the counted review
+    let c = gradeCard("hiragana", "あ", undefined, true, eve);
+    expect(c.goodDays).toBe(1);
+    c = gradeCard("hiragana", "あ", c, true, past);
+    expect(c.goodDays).toBe(1);                    // < 8h since counted day → no credit
+    c = gradeCard("hiragana", "あ", c, true, morn);
+    expect(c.goodDays).toBe(2);                    // anchor stayed at 23:50 → 8h10m passes
   });
 
   it("resetGlyphs forgets cards + pool, counting either", () => {

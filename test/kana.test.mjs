@@ -1,11 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { ENTRIES, glyph, checkAnswer, entryByGlyph } from "../src/data/kana.mjs";
+import { ENTRIES, DAKUTEN_PAIRS, glyph, checkAnswer, entryByGlyph } from "../src/data/kana.mjs";
 import { pickNext } from "../src/core/ambient.mjs";
 import { gradeCard } from "../src/core/scheduler.mjs";
 
 describe("kana data + answer checking", () => {
   it("has the full set (46 + 25 + 33 = 104 entries)", () => {
     expect(ENTRIES.length).toBe(104);
+  });
+
+  it("dakuten pairs are ka/sa/ta/ha → voiced and ha → p (25)", () => {
+    expect(DAKUTEN_PAIRS.length).toBe(25);
+    const ka = DAKUTEN_PAIRS.find((p) => p.baseHira === "か" && p.mark === "゛");
+    expect(ka.voicedHira).toBe("が");
+    expect(ka.voicedRomaji).toBe("ga");
+    const haBa = DAKUTEN_PAIRS.find((p) => p.baseHira === "は" && p.mark === "゛");
+    const haPa = DAKUTEN_PAIRS.find((p) => p.baseHira === "は" && p.mark === "゜");
+    expect(haBa.voicedRomaji).toBe("ba");
+    expect(haPa.voicedRomaji).toBe("pa");
   });
 
   it("accepts canonical and alternate romanizations, normalizes case/space", () => {
@@ -17,11 +28,37 @@ describe("kana data + answer checking", () => {
     expect(checkAnswer("", shi)).toBe(false);
   });
 
+  it("ignores accidental trailing/leading symbols (ka> still counts)", () => {
+    const ka = entryByGlyph("hiragana", "か");
+    expect(checkAnswer("ka>", ka)).toBe(true);
+    expect(checkAnswer("ka.", ka)).toBe(true);
+    expect(checkAnswer("ka!", ka)).toBe(true);
+    expect(checkAnswer(">ka", ka)).toBe(true);
+    expect(checkAnswer(" ka/ ", ka)).toBe(true);
+    expect(checkAnswer("ｋａ＞", ka)).toBe(true); // fullwidth leftovers
+    // extra letters must not sneak through — ん is "n", "na" is な
+    const n = entryByGlyph("hiragana", "ん");
+    expect(checkAnswer("n", n)).toBe(true);
+    expect(checkAnswer("n.", n)).toBe(true);
+    expect(checkAnswer("na", n)).toBe(false);
+    expect(checkAnswer("kaa", ka)).toBe(false);
+  });
+
   it("maps katakana glyphs distinctly", () => {
     const a = entryByGlyph("katakana", "ア");
     expect(a.romaji).toBe("a");
     expect(glyph(a, "katakana")).toBe("ア");
     expect(glyph(a, "hiragana")).toBe("あ");
+  });
+
+  it("keeps alternate romanizations consistent within a family", () => {
+    // ちゃ/ちゅ/ちょ all take the c- variant a kunrei-adjacent typist uses…
+    expect(checkAnswer("cya", entryByGlyph("hiragana", "ちゃ"))).toBe(true);
+    expect(checkAnswer("cyu", entryByGlyph("hiragana", "ちゅ"))).toBe(true);
+    expect(checkAnswer("cyo", entryByGlyph("hiragana", "ちょ"))).toBe(true);
+    // …and づ takes dzu just as ぢ takes dji.
+    expect(checkAnswer("dzu", entryByGlyph("hiragana", "づ"))).toBe(true);
+    expect(checkAnswer("dji", entryByGlyph("hiragana", "ぢ"))).toBe(true);
   });
 });
 
