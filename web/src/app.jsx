@@ -317,6 +317,7 @@ const fmt = (ms) => {
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 };
 const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : "–");
+const days = (n) => (n === 1 ? "1 day" : `${n} days`);
 const longDate = (date) => new Date(`${date}T12:00`).toLocaleDateString("en", { weekday: "long", day: "numeric", month: "long" });
 
 /** Practice time, streaks and a month calendar, plus where kana and phrases stand. */
@@ -350,8 +351,8 @@ function Progress({ session, s }) {
 
       <div class="stat-row">
         <Stat n={fmt(sum.week.ms)} label="last 7 days" detail={`${sum.week.days}/7 days`} />
-        <Stat n={fmt(sum.all.ms)} label="all time" detail={`${sum.all.days} days`} />
-        <Stat n={sum.best} label="best streak" detail="days" />
+        <Stat n={fmt(sum.all.ms)} label="all time" detail={days(sum.all.days)} />
+        <Stat n={sum.best} label="best streak" detail={sum.best === 1 ? "day" : "days"} />
       </div>
 
       <div class="cal">
@@ -371,7 +372,7 @@ function Progress({ session, s }) {
           ))}
         </div>
         <div class="cal-foot">
-          <span class="note">{month.total.days ? `${month.total.days} days · ${fmt(month.total.ms)} this month` : "no practice this month"}</span>
+          <span class="note">{month.total.days ? `${days(month.total.days)} · ${fmt(month.total.ms)} this month` : "no practice this month"}</span>
           <span class="cal-key">less{[0, 1, 2, 3, 4].map((l) => <i key={l} class={`l${l}`} />)}goal</span>
         </div>
         {day && (

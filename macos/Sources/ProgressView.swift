@@ -75,6 +75,9 @@ final class ProgressModel: ObservableObject {
 
 func num(_ v: Any?) -> Double { (v as? NSNumber)?.doubleValue ?? 0 }
 
+/// "1 day", "3 days".
+func days(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
+
 /// "12m", "1h 05m", "<1m".
 func minutes(_ ms: Double) -> String {
   if ms <= 0 { return "0m" }
@@ -138,8 +141,8 @@ struct ProgressPanel: View {
     let all = model.summary["all"] as? [String: Any] ?? [:]
     return HStack(spacing: 6 * scale) {
       stat(minutes(num(week["ms"])), "last 7 days", "\(Int(num(week["days"])))/7 days")
-      stat(minutes(num(all["ms"])), "all time", "\(Int(num(all["days"]))) days")
-      stat("\(Int(num(model.summary["best"])))", "best streak", "days")
+      stat(minutes(num(all["ms"])), "all time", days(Int(num(all["days"]))))
+      stat("\(Int(num(model.summary["best"])))", "best streak", Int(num(model.summary["best"])) == 1 ? "day" : "days")
     }
   }
 
@@ -175,7 +178,7 @@ struct ProgressPanel: View {
         ForEach(model.days) { d in dayCell(d) }
       }
       HStack {
-        note(num(total["days"]) > 0 ? "\(Int(num(total["days"]))) days · \(minutes(num(total["ms"]))) this month" : "no practice this month")
+        note(num(total["days"]) > 0 ? "\(days(Int(num(total["days"])))) · \(minutes(num(total["ms"]))) this month" : "no practice this month")
         Spacer()
         HStack(spacing: 2 * scale) {
           note("less")

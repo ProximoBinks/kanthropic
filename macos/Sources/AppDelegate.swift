@@ -6,6 +6,16 @@ import ServiceManagement
 @MainActor
 enum Kanthropic {
   static func main() {
+    // Dev aid: `Kanthropic --snapshot out.png [mode] [dark|light] [width]`
+    // renders the panel to a PNG and exits, for checking layout without
+    // clicking through the menu bar. Doesn't touch the running app.
+    let args = CommandLine.arguments
+    if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
+      Snapshot.render(to: args[i + 1], mode: args.count > i + 2 ? args[i + 2] : "study",
+                      dark: args.count > i + 3 ? args[i + 3] != "light" : true,
+                      width: args.count > i + 4 ? Double(args[i + 4]) ?? 360 : 360)
+      return
+    }
     // A double-click after moving the .app must take over, not activate a
     // ghost process whose menu extra died with the old path.
     let selfPid = ProcessInfo.processInfo.processIdentifier
@@ -17,6 +27,32 @@ enum Kanthropic {
     app.setActivationPolicy(.accessory)
     app.delegate = AppDelegate.shared
     app.run()
+  }
+}
+
+@MainActor
+enum Snapshot {
+  static func render(to path: String, mode: String, dark: Bool, width: Double) {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.prohibited)
+    GlyphTypeface.registerBundled()
+    let session = AppDelegate.shared.session
+    session.appear()
+    if let m = DrillMode(rawValue: mode) { session.setMode(m) }
+    let base = AppDelegate.defaultPanelSize
+    let size = NSSize(width: width, height: base.height * width / base.width)
+    let root = PopoverView().environmentObject(session)
+      .environment(\.colorScheme, dark ? .dark : .light)
+    let host = NSHostingView(rootView: root)
+    host.frame = NSRect(origin: .zero, size: size)
+    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+    host.cacheDisplay(in: host.bounds, to: rep)
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
   }
 }
 

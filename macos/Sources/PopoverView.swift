@@ -97,45 +97,49 @@ private struct ScaledPopoverContent: View {
     .onChange(of: session.focusNonce) { _ in focused = true }
   }
 
+  /// Tabs on the left, tool icons in the middle, script switch + settings on
+  /// the right. Everything is fixed-size so nothing gets squeezed (the
+  /// script switch used to be crushed to a sliver at the default width).
   private var header: some View {
-    HStack(alignment: .center, spacing: 9 * scale) {
-      modeTab("learn", .learn)
-      modeTab("study", .study)
-      modeTab("phrases", .phrases)
-      Button { session.setMode(.dakuten) } label: {
-        Text("゛")
-          .font(.system(size: 15 * scale, weight: .semibold))
-          .foregroundColor(session.headerMode == .dakuten ? Ink.gold : Ink.mute(scheme))
+    HStack(alignment: .center, spacing: 0) {
+      HStack(spacing: 10 * scale) {
+        modeTab("learn", .learn)
+        modeTab("study", .study)
+        modeTab("phrases", .phrases)
       }
-      .buttonStyle(.plain)
-      .help("Dakuten")
-      Button { session.setMode(.chart) } label: {
-        Image(systemName: "square.grid.3x3")
-          .font(.system(size: 12 * scale, weight: .medium))
-          .foregroundColor(session.headerMode == .chart ? Ink.gold : Ink.mute(scheme))
+      .fixedSize()
+      Spacer(minLength: 6 * scale)
+      HStack(spacing: 8 * scale) {
+        iconButton(.dakuten, help: "Dakuten") {
+          Text("゛").font(.system(size: 17 * scale, weight: .bold)).offset(x: -1 * scale, y: 3 * scale)
+        }
+        iconButton(.chart, help: "Chart") {
+          Image(systemName: "square.grid.3x3").font(.system(size: 12 * scale, weight: .medium))
+        }
+        iconButton(.progress, help: "Progress") {
+          Image(systemName: "calendar").font(.system(size: 12 * scale, weight: .medium))
+        }
       }
-      .buttonStyle(.plain)
-      .help("Chart")
-      Button { session.setMode(.progress) } label: {
-        Image(systemName: "calendar")
-          .font(.system(size: 12 * scale, weight: .medium))
-          .foregroundColor(session.headerMode == .progress ? Ink.gold : Ink.mute(scheme))
-      }
-      .buttonStyle(.plain)
-      .help("Progress")
-      Spacer()
+      .fixedSize()
+      Spacer(minLength: 6 * scale)
       scriptToggle
       Button(action: { session.openSettings() }) {
         Image(systemName: "gearshape")
           .font(.system(size: 12 * scale, weight: .medium))
           .foregroundColor(Ink.mute(scheme))
+          .overlay(alignment: .topTrailing) {
+            // Grok thinking: a small gold badge on the gear instead of its own slot.
+            if session.thinking {
+              Circle().fill(Ink.gold).frame(width: 5 * scale, height: 5 * scale).offset(x: 3 * scale, y: -2 * scale)
+            }
+          }
+          .frame(width: 15 * scale, height: 18 * scale, alignment: .trailing)
+          .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .help("Settings")
-      Circle()
-        .fill(session.thinking ? Ink.gold : Ink.mute(scheme).opacity(0.35))
-        .frame(width: 6 * scale, height: 6 * scale)
-        .help(session.thinking ? "Grok is thinking" : "Grok is idle")
+      .help(session.thinking ? "Settings · Grok is thinking" : "Settings")
+      .padding(.leading, 7 * scale)
+      .fixedSize()
     }
   }
 
@@ -145,7 +149,7 @@ private struct ScaledPopoverContent: View {
     } label: {
       Text(label)
         .font(Ink.ui(scale))
-        .tracking(0.9 * scale)
+        .tracking(0.5 * scale)
         .textCase(.uppercase)
         .foregroundColor(session.headerMode == mode ? Ink.gold : Ink.mute(scheme))
         .fixedSize()
@@ -153,26 +157,44 @@ private struct ScaledPopoverContent: View {
     .buttonStyle(.plain)
   }
 
+  private func iconButton<L: View>(_ mode: DrillMode, help: String, @ViewBuilder label: () -> L) -> some View {
+    Button { session.setMode(mode) } label: {
+      label()
+        .foregroundColor(session.headerMode == mode ? Ink.gold : Ink.mute(scheme))
+        .frame(width: 15 * scale, height: 18 * scale)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(help)
+  }
+
+  /// あ | ア as a small segmented pill: the active script is filled.
   private var scriptToggle: some View {
-    HStack(spacing: 8 * scale) {
+    HStack(spacing: 0) {
       scriptBtn("あ", "hiragana")
-      Text("/")
-        .font(Ink.ui(scale))
-        .foregroundColor(Ink.mute(scheme).opacity(0.5))
       scriptBtn("ア", "katakana")
     }
+    .padding(2 * scale)
+    .background(Capsule().fill(Ink.hair(scheme).opacity(scheme == .dark ? 1 : 0.7)))
+    .fixedSize()
+    .help("Hiragana / katakana")
   }
 
   private func scriptBtn(_ label: String, _ script: String) -> some View {
-    Button {
+    let on = session.script == script
+    return Button {
       session.setScript(script)
     } label: {
       Text(label)
-        .font(.kana(session.glyphFontID, size: 14 * scale))
-        .foregroundColor(session.script == script ? Ink.glyph(scheme) : Ink.mute(scheme))
+        .font(.kana(session.glyphFontID, size: 13 * scale))
+        .foregroundColor(on ? Ink.glyph(scheme) : Ink.mute(scheme))
+        .frame(width: 21 * scale, height: 19 * scale)
+        .background(Capsule().fill(on ? Ink.gold.opacity(0.28) : .clear))
+        .contentShape(Capsule())
     }
     .buttonStyle(.plain)
   }
+
 
   private var card: some View {
     HStack(alignment: .center, spacing: 18 * scale) {
