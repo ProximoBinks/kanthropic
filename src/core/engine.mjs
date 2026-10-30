@@ -13,7 +13,8 @@ import { ensureLearned } from "./learned.mjs";
 import { emptyBase, finish as syncFinish, prepare as syncPrepare } from "./sync.mjs";
 import { activityDay, activityMonth, activitySummary, formatDuration, logAnswer } from "./activity.mjs";
 import {
-  audioFile, VOICES as PHRASE_VOICES, cardKey as phraseCardKey, checkPhrase, gradePhrase, nextPhrase, phraseById, phraseCard, phraseQuiz, phraseTopics, PHRASE_SOURCE,
+  audioFile, VOICES as PHRASE_VOICES, cardKey as phraseCardKey, checkPhrase, gradePhrase, nextPhrase, phraseById, phraseCard, phraseQuiz,
+  phraseDrillSet, startDrill, drillNext, drillGrade, phraseTopics, PHRASE_SOURCE,
 } from "./phrases.mjs";
 import {
   beginDrill, checkDakuten, drillSets, gradeDakuten, markDueNow, nextDakuten, nextRevise, nextRote,
@@ -189,6 +190,15 @@ export function invoke(op, p = {}) {
         return phraseQuiz(p.id);
       case "phraseCard":
         return phraseCard(p.store || {}, p.id, p.kind ?? "review");
+      // Phrase drill: state is plain JSON the host holds between calls.
+      case "phraseDrillStart": {
+        const ids = phraseDrillSet(p.store || {}, { kind: p.kind ?? "shaky", topic: p.topic ?? null, exclude: p.exclude ?? [] });
+        return ids.length ? startDrill(ids, { kind: p.kind ?? "shaky", topic: p.topic ?? null }) : null;
+      }
+      case "phraseDrillNext":
+        return drillNext(p.drill, p.lastId ?? null);
+      case "phraseDrillGrade":
+        return drillGrade(p.drill, p.id, !!p.correct);
       case "checkPhrase":
         return checkPhrase(p.id, p.picked);
       case "gradePhrase": {

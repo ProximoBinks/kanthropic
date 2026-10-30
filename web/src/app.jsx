@@ -540,20 +540,33 @@ function usePhrases(ps) {
 function Phrases({ ps }) {
   const p = usePhrases(ps);
   if (p.view === "topics") return <PhraseTopics ps={ps} p={p} />;
-  const topic = p.topic ? p.stats.topics.find((t) => t.id === p.topic)?.label : "review";
+  const topicLabel = p.topic ? p.stats.topics.find((t) => t.id === p.topic)?.label : null;
+  const topic = p.drill
+    ? `drill · ${p.drill.kind === "shaky" ? "shaky" : "all"}${topicLabel ? ` · ${topicLabel}` : ""}`
+    : topicLabel ?? "review";
+  const left = p.drill ? p.drill.pending.length : 0;
   return (
     <section class="phrases">
       <div class="phrase-bar">
         <button class="back-link" onClick={() => ps.showTopics()}>‹ topics</button>
-        <span class="label">{topic}</span>
+        <span class={`label ${p.drill ? "gold" : ""}`}>{topic}</span>
         <span class="grow" />
-        {p.score.seen > 0 && <span class="mono">{p.score.right}/{p.score.seen}</span>}
+        {p.drill && p.view !== "drill-done" && <span class="mono">{left} left</span>}
+        {!p.drill && p.score.seen > 0 && <span class="mono">{p.score.right}/{p.score.seen}</span>}
       </div>
       {p.view === "intro" && <PhraseIntro ps={ps} p={p} />}
       {p.view === "quiz" && p.mode === "build" && <PhraseQuiz ps={ps} p={p} />}
       {p.view === "quiz" && p.mode === "listen" && <PhraseListen ps={ps} p={p} />}
       {p.view === "quiz" && p.mode === "say" && <PhraseSay ps={ps} p={p} />}
       {p.view === "empty" && <PhraseEmpty ps={ps} p={p} />}
+      {p.view === "drill-done" && <PhraseDrillDone ps={ps} p={p} />}
+      {p.view !== "drill-done" && p.view !== "empty" && !p.result && (
+        <div class="drill-links">
+          {p.drill
+            ? <button class="back-link" onClick={() => ps.endDrill()}>end drill</button>
+            : <DrillLinks ps={ps} p={p} />}
+        </div>
+      )}
     </section>
   );
 }
@@ -574,6 +587,12 @@ function PhraseTopics({ ps, p }) {
           <button class="topic due-all" onClick={() => ps.start(null)}>
             <span class="topic-name">review what's due</span>
             <span class="topic-badge">{st.due}</span>
+          </button>
+        )}
+        {st.shaky > 0 && (
+          <button class="topic due-all" onClick={() => ps.startDrill("shaky", null)}>
+            <span class="topic-name">drill the shaky ones</span>
+            <span class="mono">{st.shaky}</span>
           </button>
         )}
         {st.topics.map((t, i) => [
@@ -714,6 +733,40 @@ function PhraseSay({ ps, p }) {
   );
 }
 
+/** In a topic: drill now (everything met) or just the shaky ones. */
+function DrillLinks({ ps, p }) {
+  const row = p.topic ? p.stats.topics.find((t) => t.id === p.topic) : null;
+  const met = row ? row.introduced : p.stats.introduced;
+  const shaky = row ? row.shaky : p.stats.shaky;
+  if (!met) return null;
+  return (
+    <>
+      <button class="back-link" onClick={() => ps.startDrill("topic", p.topic)}>drill now</button>
+      {shaky > 0 && <button class="back-link" onClick={() => ps.startDrill("shaky", p.topic)}>drill shaky · {shaky}</button>}
+    </>
+  );
+}
+
+function PhraseDrillDone({ ps, p }) {
+  const d = p.drill;
+  const n = d.ids.length;
+  return (
+    <div class="phrase-card">
+      <div class="label gold">drill done</div>
+      <p class="phrase-en">{d.firstTry}/{n} first try</p>
+      <p class="note">
+        {d.missed.length ? `${d.missed.length} needed another go — they're the ones to watch` : "clean round"}
+        {" · "}drills are extra practice and don't move your review schedule
+      </p>
+      <section class="actions">
+        <Action title="another round" detail={d.kind === "shaky" ? "next shaky ones" : "next phrases"} onClick={() => ps.drillAgain()} />
+        <Action title={p.topic ? "back to the topic" : "back to reviews"} onClick={() => ps.endDrill()} />
+        <Action title="topics" onClick={() => ps.showTopics()} />
+      </section>
+    </div>
+  );
+}
+
 function PhraseEmpty({ ps, p }) {
   const msg = {
     "caught-up": "nothing due — pick a topic to meet new phrases",
@@ -726,6 +779,12 @@ function PhraseEmpty({ ps, p }) {
       <section class="actions">
         {p.reason === "limit" && <Action title="learn 5 more" detail="today only" onClick={() => ps.learnMore()} />}
         {p.stats.due > 0 && p.topic && <Action title="review what's due" detail={`${p.stats.due}`} onClick={() => ps.start(null)} />}
+        {(p.topic ? p.stats.topics.find((t) => t.id === p.topic)?.introduced : p.stats.introduced) > 0 && (
+          <Action title="drill now" detail="extra practice" onClick={() => ps.startDrill("topic", p.topic)} />
+        )}
+        {(p.topic ? p.stats.topics.find((t) => t.id === p.topic)?.shaky : p.stats.shaky) > 0 && (
+          <Action title="drill the shaky ones" detail={`${p.topic ? p.stats.topics.find((t) => t.id === p.topic)?.shaky : p.stats.shaky}`} onClick={() => ps.startDrill("shaky", p.topic)} />
+        )}
         <Action title="topics" onClick={() => ps.showTopics()} />
       </section>
     </div>

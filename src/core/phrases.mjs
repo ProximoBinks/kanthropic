@@ -102,7 +102,7 @@ export function introducedToday(store, now = Date.now()) {
 
 /** Per-topic progress for the picker, plus totals. */
 export function phraseTopics(store, now = Date.now()) {
-  const rows = TOPICS.map((t) => ({ id: t.id, label: t.label, group: t.group ?? "", count: t.count, introduced: 0, due: 0, mastered: 0, saying: 0 }));
+  const rows = TOPICS.map((t) => ({ id: t.id, label: t.label, group: t.group ?? "", count: t.count, introduced: 0, due: 0, mastered: 0, saying: 0, shaky: 0 }));
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const p of PHRASES) {
     const c = cardOf(store, p.id);
@@ -112,6 +112,7 @@ export function phraseTopics(store, now = Date.now()) {
     if (isMastered(c)) row.mastered++;
     if (phraseMode(c, p.topic).stage === "say") row.saying++;
     if (c.due <= now) row.due++;
+    if (isShaky(c)) row.shaky++;
   }
   const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
   return {
@@ -121,6 +122,7 @@ export function phraseTopics(store, now = Date.now()) {
     due: sum("due"),
     mastered: sum("mastered"),
     saying: sum("saying"),
+    shaky: sum("shaky"),
     newToday: introducedToday(store, now),
     newPerDay: NEW_PER_DAY,
   };
@@ -214,12 +216,92 @@ export function listenQuiz(id, rng = Math.random) {
 export function phraseCard(store, id, kind, rng = Math.random) {
   const p = phraseById(id);
   if (!p) return null;
-  const { mode, stage } = kind === "new" ? { mode: "build", stage: "build" } : phraseMode(cardOf(store, id), p.topic);
+  // "rebuild": a drill card you just missed comes back with tiles.
+  const { mode, stage } = kind === "new" || kind === "rebuild"
+    ? { mode: "build", stage: kind === "new" ? "build" : phraseMode(cardOf(store, id), p.topic).stage }
+    : phraseMode(cardOf(store, id), p.topic);
   return {
     mode, stage,
     ...(mode === "build" ? { tiles: phraseQuiz(id, rng).tiles } : {}),
     ...(mode === "listen" ? listenQuiz(id, rng) : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Drill: extra practice on demand, outside the schedule.
+//
+// A drill is a short round of phrases you've already met, asked in each
+// card's current mode until every one has been answered right; a miss sends
+// the phrase a few places back and brings it back as tiles. Like the kana
+// rote, a drill never writes FSRS: right answers crammed minutes apart would
+// fake long-term memory and push real reviews out. It only feeds the
+// practice log. Two kinds:
+//   shaky   met but not yet mastered, worst first (recent miss, low
+//           accuracy, short interval), across every topic or one
+//   topic   every phrase you've met in one topic, least stable first
+// ---------------------------------------------------------------------------
+
+/** Phrases per drill round. */
+export const DRILL_SIZE = 10;
+/** A missed phrase comes back after this many others. */
+const DRILL_REQUEUE = 3;
+
+/** Met but not mastered: what "drill the shaky ones" works on. */
+export function isShaky(card) {
+  return !!card && !isMastered(card);
+}
+
+/** Higher = shakier: a recent miss, a poor record, a short interval. */
+function shakiness(card) {
+  if (!card) return -1;
+  const seen = card.seen ?? card.reps ?? 0;
+  const accuracy = seen ? 1 - (card.misses ?? 0) / seen : 1;
+  return (card.lastMiss ? 3 : 0) + (1 - accuracy) * 2 + (card.lapses ?? 0) * 0.5 + 1 / (1 + (card.stability ?? 0));
+}
+
+/**
+ * Phrases for a drill round.
+ * @param {{ cards?: Record<string, CardState> }} store
+ * @param {{ kind?: "shaky" | "topic", topic?: string | null, exclude?: string[], size?: number }} [opts]
+ * @returns {string[]}
+ */
+export function phraseDrillSet(store, { kind = "shaky", topic = null, exclude = [], size = DRILL_SIZE } = {}) {
+  const skip = new Set(exclude);
+  const pool = PHRASES.filter((p) => (!topic || p.topic === topic) && !skip.has(p.id)).filter((p) => {
+    const c = cardOf(store, p.id);
+    return kind === "topic" ? !!c : isShaky(c);
+  });
+  const ranked = pool.map((p) => ({ id: p.id, score: shakiness(cardOf(store, p.id)) })).sort((a, b) => b.score - a.score);
+  return ranked.slice(0, size).map((r) => r.id);
+}
+
+/**
+ * Start a drill round. The state is plain JSON so the hosts can hold it.
+ * @param {string[]} ids
+ */
+export function startDrill(ids, { kind = "shaky", topic = null } = {}) {
+  return { kind, topic, ids: [...ids], pending: [...ids], missed: [], firstTry: 0, answered: 0 };
+}
+
+/** The next phrase of a drill (avoiding an immediate repeat), or null when it's done. */
+export function drillNext(d, lastId = null) {
+  if (!d?.pending?.length) return null;
+  const id = d.pending.length > 1 && d.pending[0] === lastId ? d.pending[1] : d.pending[0];
+  return { id, kind: d.missed.includes(id) ? "rebuild" : "review" };
+}
+
+/** Grade a drill answer. Returns the new state; `done` once every phrase is right. */
+export function drillGrade(d, id, correct) {
+  const pending = d.pending.filter((x) => x !== id);
+  const missed = [...d.missed];
+  let firstTry = d.firstTry;
+  if (correct) {
+    if (!missed.includes(id)) firstTry++;
+  } else {
+    if (!missed.includes(id)) missed.push(id);
+    pending.splice(Math.min(DRILL_REQUEUE, pending.length), 0, id);
+  }
+  return { ...d, pending, missed, firstTry, answered: d.answered + 1, done: pending.length === 0 };
 }
 
 /** Self-grades for "say it", as ts-fsrs ratings. */

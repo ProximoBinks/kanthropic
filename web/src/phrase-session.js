@@ -4,7 +4,8 @@
  * tiles, listening or "say it", whichever phraseCard picks for the card.
  */
 import {
-  audioFile, cardKey, checkPhrase, gradePhrase, nextPhrase, phraseById, phraseCard, phraseTopics, PHRASE_SOURCE,
+  audioFile, cardKey, checkPhrase, drillGrade, drillNext, gradePhrase, nextPhrase, phraseById, phraseCard,
+  phraseDrillSet, phraseTopics, startDrill, PHRASE_SOURCE,
 } from "../../src/core/phrases.mjs";
 import { load, update } from "./store.js";
 import { logAnswer } from "../../src/core/activity.mjs";
@@ -62,8 +63,11 @@ export class PhraseSession {
       view: "topics", topic: null, stats: phraseTopics(load()),
       phrase: null, kind: null, mode: "build", stage: "build", tiles: [], picked: [], choices: [], answer: null, chosen: null,
       revealed: false, result: null, reason: null, score: { right: 0, seen: 0 },
+      drill: null,
     };
     this.lastId = null;
+    /** Phrases drilled this sitting, so "another round" moves on to the next ones. */
+    this.drilled = [];
     this.extraNew = 0;
     this.listeners = new Set();
     this.source = PHRASE_SOURCE;
@@ -86,19 +90,55 @@ export class PhraseSession {
 
   showTopics() {
     try { localStorage.removeItem(TOPIC_SLOT); } catch { /* ignore */ }
-    this.set({ view: "topics", stats: phraseTopics(load()), phrase: null });
+    this.set({ view: "topics", stats: phraseTopics(load()), phrase: null, drill: null });
+  }
+
+  /**
+   * Drill: a round of phrases you've met, outside the schedule (no FSRS).
+   * @param {"shaky" | "topic"} kind  shaky = not mastered yet; topic = all met in `topic`
+   * @param {string | null} topic
+   */
+  startDrill(kind, topic = this.s.topic, again = false) {
+    const store = load();
+    if (!again) this.drilled = [];
+    let ids = phraseDrillSet(store, { kind, topic, exclude: this.drilled });
+    // Run out of new ones: start over from the top.
+    if (!ids.length && this.drilled.length) { this.drilled = []; ids = phraseDrillSet(store, { kind, topic }); }
+    if (!ids.length) return;
+    this.drilled.push(...ids);
+    this.lastId = null;
+    this.set({ topic, drill: startDrill(ids, { kind, topic }), score: { right: 0, seen: 0 } });
+    this.deal();
+  }
+
+  /** Same kind of drill again (the next phrases, if there are more). */
+  drillAgain() {
+    const d = this.s.drill;
+    if (d) this.startDrill(d.kind, d.topic, true);
+  }
+
+  endDrill() {
+    this.set({ drill: null });
+    this.deal();
   }
 
   /** @param {string | null} topic  null = review everything that's due */
   start(topic) {
     try { localStorage.setItem(TOPIC_SLOT, topic ?? "all"); } catch { /* ignore */ }
     this.lastId = null;
-    this.set({ topic, score: { right: 0, seen: 0 } });
+    this.set({ topic, score: { right: 0, seen: 0 }, drill: null });
     this.deal();
   }
 
   deal() {
     const store = load();
+    if (this.s.drill) {
+      const n = drillNext(this.s.drill, this.lastId);
+      if (!n) { this.set({ view: "drill-done", phrase: null, stats: phraseTopics(store) }); return; }
+      this.lastId = n.id;
+      this.quiz(phraseById(n.id), n.kind);
+      return;
+    }
     const n = nextPhrase(store, { topic: this.s.topic, lastId: this.lastId, extraNew: this.extraNew });
     const stats = phraseTopics(store);
     if (!n.id) {
@@ -129,7 +169,14 @@ export class PhraseSession {
 
   /** Store a grade and update the session score. */
   grade(ok, extra = {}) {
-    const { phrase, mode, kind } = this.s;
+    const { phrase, mode, kind, drill } = this.s;
+    if (drill) {
+      // Drilling never touches the schedule; it only counts as practice.
+      update((s) => { logAnswer(s, { kind: "phrase", correct: ok, mode }); });
+      const score = { right: this.s.score.right + (ok ? 1 : 0), seen: this.s.score.seen + 1 };
+      this.set({ result: ok ? "ok" : "miss", score, drill: drillGrade(drill, phrase.id, ok) });
+      return;
+    }
     update((s) => {
       s.cards = { ...s.cards, [cardKey(phrase.id)]: gradePhrase(s, phrase.id, ok, Date.now(), { mode, ...extra }) };
       logAnswer(s, { kind: "phrase", correct: ok, mode, isNew: kind === "new" });
@@ -192,6 +239,6 @@ export class PhraseSession {
   /** Another device's answers arrived. Only refresh when nothing is mid-card. */
   remoteChanged() {
     if (this.s.view === "topics") this.set({ stats: phraseTopics(load()) });
-    else if (this.s.view === "empty") this.deal();
+    else if (this.s.view === "empty" && !this.s.drill) this.deal();
   }
 }

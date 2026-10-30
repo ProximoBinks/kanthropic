@@ -49,6 +49,7 @@ struct PhrasesView: View {
           case "say": say
           default: quiz
           }
+        case .drillDone: drillDone
         default: empty
         }
       }
@@ -72,6 +73,9 @@ struct PhrasesView: View {
         VStack(alignment: .leading, spacing: 0) {
           if model.dueAll > 0 {
             topicRow("review what's due", due: model.dueAll, meter: nil, gold: true) { model.start(nil) }
+          }
+          if model.shaky > 0 {
+            topicRow("drill the shaky ones  \(model.shaky)", due: 0, meter: nil, gold: true) { model.startDrill("shaky", topic: nil) }
           }
           ForEach(Array(model.topics.enumerated()), id: \.element.id) { i, t in
             if !t.group.isEmpty && (i == 0 || model.topics[i - 1].group != t.group) {
@@ -140,9 +144,55 @@ struct PhrasesView: View {
         Text("‹ topics").font(Ink.ui(scale)).tracking(1.0 * scale).textCase(.uppercase).foregroundColor(Ink.gold)
       }
       .buttonStyle(.plain)
-      Text(model.topicLabel).font(Ink.ui(scale)).tracking(1.0 * scale).textCase(.uppercase).foregroundColor(Ink.mute(scheme))
+      Text(model.topicLabel).font(Ink.ui(scale)).tracking(1.0 * scale).textCase(.uppercase)
+        .foregroundColor(model.drill != nil ? Ink.gold : Ink.mute(scheme))
       Spacer()
-      if model.seen > 0 { mono("\(model.right)/\(model.seen)") }
+      if model.drill != nil {
+        if model.view != .drillDone { mono("\(model.drillLeft) left") }
+        if model.result == nil && model.view != .drillDone {
+          smallLink("end") { model.endDrill() }
+        }
+      } else {
+        if model.seen > 0 { mono("\(model.right)/\(model.seen)") }
+        if model.view != .empty && model.result == nil && model.scopeMet > 0 {
+          Menu {
+            Button("drill now (\(model.scopeMet) met)") { model.startDrill("topic", topic: model.topic) }
+            if model.scopeShaky > 0 {
+              Button("drill the shaky ones (\(model.scopeShaky))") { model.startDrill("shaky", topic: model.topic) }
+            }
+          } label: {
+            Text("drill").font(Ink.ui(scale)).tracking(1.0 * scale).textCase(.uppercase).foregroundColor(Ink.gold)
+          }
+          .menuStyle(.borderlessButton)
+          .menuIndicator(.hidden)
+          .fixedSize()
+        }
+      }
+    }
+  }
+
+  private func smallLink(_ title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(title).font(Ink.ui(scale)).tracking(1.0 * scale).textCase(.uppercase).foregroundColor(Ink.gold)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var drillDone: some View {
+    VStack(alignment: .leading, spacing: 12 * scale) {
+      Spacer(minLength: 0)
+      label("drill done", color: Ink.gold)
+      Text("\(model.drillFirstTry)/\(model.drillSize) first try")
+        .font(.system(size: 19 * scale, weight: .medium)).foregroundColor(Ink.glyph(scheme))
+      Text((model.drillMissed > 0 ? "\(model.drillMissed) needed another go — they're the ones to watch" : "clean round")
+           + " · drills are extra practice and don't move your review schedule")
+        .font(.system(size: 11 * scale)).foregroundColor(Ink.mute(scheme))
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+      link("another round  ⏎", detail: Engine.string(model.drill?["kind"]) == "shaky" ? "next shaky ones" : "next phrases") { model.drillAgain() }
+      link(model.topic != nil ? "back to the topic" : "back to reviews") { model.endDrill() }
+      link("topics") { model.showTopics() }
+      Spacer(minLength: 0)
     }
   }
 
@@ -301,6 +351,8 @@ struct PhrasesView: View {
         .fixedSize(horizontal: false, vertical: true)
       if model.reason == "limit" { link("learn 5 more", detail: "today only") { model.learnMore() } }
       if model.dueAll > 0 && model.topic != nil { link("review what's due", detail: "\(model.dueAll)") { model.start(nil) } }
+      if model.scopeMet > 0 { link("drill now", detail: "extra practice") { model.startDrill("topic", topic: model.topic) } }
+      if model.scopeShaky > 0 { link("drill the shaky ones", detail: "\(model.scopeShaky)") { model.startDrill("shaky", topic: model.topic) } }
       link("topics") { model.showTopics() }
       Spacer(minLength: 0)
     }

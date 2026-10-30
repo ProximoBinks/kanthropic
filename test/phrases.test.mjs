@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { emptyStore } from "../src/core/store.mjs";
 import {
-  NEW_PER_DAY, PHRASES, TOPICS, cardKey, checkPhrase, gradePhrase, listenQuiz, nextPhrase, phraseById, phraseCard,
-  phraseMode, phraseQuiz, phraseTopics,
+  DRILL_SIZE, NEW_PER_DAY, PHRASES, TOPICS, cardKey, checkPhrase, drillGrade, drillNext, gradePhrase, listenQuiz,
+  nextPhrase, phraseById, phraseCard, phraseDrillSet, phraseMode, phraseQuiz, phraseTopics, startDrill,
 } from "../src/core/phrases.mjs";
 import { summary } from "../src/core/flow.mjs";
 
@@ -181,5 +181,65 @@ describe("phrase modes", () => {
       for (const o of others) expect(o.en.toLowerCase().replace(/[.!?]/g, "")).not.toBe(p.en.toLowerCase().replace(/[.!?]/g, ""));
       expect(new Set(q.choices.map((c) => c.en + c.note)).size).toBe(4);
     }
+  });
+});
+
+describe("phrase drill", () => {
+  const metIn = (store, topic, n) => {
+    const ids = PHRASES.filter((p) => p.topic === topic).slice(0, n).map((p) => p.id);
+    for (const id of ids) answer(store, id, true);
+    return ids;
+  };
+
+  it("picks the shakiest met phrases first, and never unmet ones", () => {
+    const store = emptyStore();
+    const ids = metIn(store, "arriving", 5);
+    // Miss one: it should lead the drill.
+    store.cards[cardKey(ids[3])] = gradePhrase(store, ids[3], false, NOW + 60_000);
+    const set = phraseDrillSet(store, { kind: "shaky" });
+    expect(set[0]).toBe(ids[3]);
+    expect(set.sort()).toEqual([...ids].sort());
+    expect(phraseDrillSet(emptyStore())).toEqual([]);
+    expect(phraseTopics(store, NOW).shaky).toBe(5);
+    expect(phraseTopics(store, NOW).topics.find((t) => t.id === "arriving").shaky).toBe(5);
+  });
+
+  it("drills a topic's met phrases, capped at a round, skipping ones already drilled", () => {
+    const store = emptyStore();
+    const ids = metIn(store, "basics", 14);
+    const first = phraseDrillSet(store, { kind: "topic", topic: "basics" });
+    expect(first.length).toBe(DRILL_SIZE);
+    const next = phraseDrillSet(store, { kind: "topic", topic: "basics", exclude: first });
+    expect(next.length).toBe(ids.length - DRILL_SIZE);
+    expect(next.some((id) => first.includes(id))).toBe(false);
+    expect(phraseDrillSet(store, { kind: "topic", topic: "eating" })).toEqual([]);
+  });
+
+  it("runs until every phrase is right, bringing a miss back as tiles", () => {
+    let d = startDrill(["a", "b", "c", "d", "e"]);
+    expect(drillNext(d)).toEqual({ id: "a", kind: "review" });
+    d = drillGrade(d, "a", false);                 // a goes 3 back
+    expect(d.pending).toEqual(["b", "c", "d", "a", "e"]);
+    for (const id of ["b", "c", "d"]) d = drillGrade(d, id, true);
+    expect(drillNext(d)).toEqual({ id: "a", kind: "rebuild" });
+    d = drillGrade(d, "a", true);
+    d = drillGrade(d, "e", true);
+    expect(d.done).toBe(true);
+    expect(drillNext(d)).toBeNull();
+    expect(d).toMatchObject({ firstTry: 4, missed: ["a"], answered: 6 });
+  });
+
+  it("doesn't deal the phrase you just answered twice in a row", () => {
+    const d = { ...startDrill(["a", "b"]), pending: ["a", "b"] };
+    expect(drillNext(d, "a").id).toBe("b");
+    expect(drillNext({ ...d, pending: ["a"] }, "a").id).toBe("a");
+  });
+
+  it("rebuilds a missed drill phrase with tiles even when it's at the say stage", () => {
+    const store = emptyStore();
+    const id = "arriving-4";
+    store.cards[cardKey(id)] = { state: 2, goodDays: 3, stability: 30, seen: 10, misses: 0, reps: 10, due: NOW + 1e9 };
+    expect(phraseCard(store, id, "review").mode).toBe("say");
+    expect(phraseCard(store, id, "rebuild")).toMatchObject({ mode: "build", stage: "say" });
   });
 });

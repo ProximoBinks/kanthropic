@@ -343,3 +343,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--gold); outl
 .bar-track { height: 5px; border-radius: 3px; background: var(--hair); overflow: hidden; }
 .bar-track span { display: block; height: 100%; background: var(--ok); }
 .bar-row .note { font-size: 11px; }
+
+.drill-links { display: flex; gap: 16px; justify-content: center; padding: 2px 0 6px; }
+.drill-links .back-link { font-size: 11px; }
+.label.gold { color: var(--gold); }
