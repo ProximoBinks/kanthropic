@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { PHRASE_SOURCE, VOICES } from "../../src/core/phrases.mjs";
 import { setSpeakEnabled, setVoicePref, speakEnabled, speakPhrase, voicePref } from "./phrase-session.js";
 import { accountEmail, authenticate, onStatus, pair, syncAvailable, syncKey, syncNow, unpair } from "./cloud.js";
+import { load, update } from "./store.js";
 
 const FONTS = [
   { id: "bundled", label: "Noto Sans", detail: "ships with kanthropic", css: "'Kana', 'Hiragino Sans', sans-serif" },
@@ -333,11 +334,16 @@ function Progress({ session, s }) {
   return (
     <section class="progress chart-scroll">
       <div class="today">
-        <svg class="ring" viewBox="0 0 44 44" width="64" height="64">
-          <circle cx="22" cy="22" r="19" class="ring-track" />
-          <circle cx="22" cy="22" r="19" class={`ring-fill ${today.goalMet ? "met" : ""}`}
-            stroke-dasharray={`${ring * 119.4} 119.4`} transform="rotate(-90 22 22)" />
-        </svg>
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 48 48" width="68" height="68">
+            <circle cx="24" cy="24" r="21.5" class="ring-track" />
+            <circle cx="24" cy="24" r="21.5" class={`ring-fill ${today.goalMet ? "met" : ""}`}
+              stroke-dasharray={`${ring * 135.1} 135.1`} transform="rotate(-90 24 24)" />
+          </svg>
+          {v.avatar
+            ? <img class="ring-avatar" src={v.avatar} alt="" />
+            : <span class={`ring-time ${today.goalMet ? "met" : ""}`}>{fmt(today.ms)}</span>}
+        </div>
         <div class="today-text">
           <div class="label">today</div>
           <div class="today-time">{fmt(today.ms)}<span class="mute"> / {sum.goalMin}m</span></div>
@@ -849,6 +855,39 @@ function SpeakSetting() {
         <span class="gold">{on ? "on" : "off"}</span>
       </button>
       <VoiceSetting />
+      <AvatarSetting />
+    </>
+  );
+}
+
+/** Profile picture for the progress ring: centre-cropped, shrunk to a small JPEG, synced. */
+function AvatarSetting() {
+  const [avatar, setAvatar] = useState(() => load().profile?.avatar || null);
+  const input = useRef(null);
+  const pick = async (file) => {
+    if (!file) return;
+    const img = await createImageBitmap(file);
+    const side = Math.min(img.width, img.height);
+    const c = document.createElement("canvas");
+    c.width = c.height = 192;
+    c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 192, 192);
+    const url = c.toDataURL("image/jpeg", 0.82);
+    update((s) => { s.profile = { avatar: url }; });
+    setAvatar(url);
+  };
+  return (
+    <>
+      <button class="row" onClick={() => input.current?.click()}>
+        {avatar && <img class="avatar-thumb" src={avatar} alt="" />}
+        <span class="row-text"><span class="row-title">Profile picture</span><span class="row-detail">shown in the progress ring · syncs</span></span>
+        <span class="gold">{avatar ? "change" : "choose"}</span>
+      </button>
+      {avatar && (
+        <button class="row" onClick={() => { update((s) => { s.profile = {}; }); setAvatar(null); }}>
+          <span class="row-text"><span class="row-title">Remove picture</span></span>
+        </button>
+      )}
+      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => pick(e.currentTarget.files?.[0])} />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Progress tab: practice time, streaks, a month calendar and where kana and
 /// phrases stand. Numbers come from engine.js (progressView in
@@ -13,9 +14,62 @@ struct ProgressDay: Identifiable {
   let level: Int
 }
 
+/// Profile picture: a small square JPEG kept in the store as a data URL
+/// (store.profile.avatar), so it syncs to the other devices.
+enum Avatar {
+  static let size: CGFloat = 192
+
+  @MainActor
+  static func image(_ store: [String: Any]) -> NSImage? {
+    guard let s = (store["profile"] as? [String: Any])?["avatar"] as? String,
+          let comma = s.firstIndex(of: ","),
+          let data = Data(base64Encoded: String(s[s.index(after: comma)...]))
+    else { return nil }
+    return NSImage(data: data)
+  }
+
+  /// Centre-crop to a square, shrink, encode as a JPEG data URL.
+  static func dataURL(from url: URL) -> String? {
+    guard let src = NSImage(contentsOf: url),
+          let cg = src.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+    let side = min(cg.width, cg.height)
+    let crop = CGRect(x: (cg.width - side) / 2, y: (cg.height - side) / 2, width: side, height: side)
+    guard let square = cg.cropping(to: crop),
+          let ctx = CGContext(data: nil, width: Int(size), height: Int(size), bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+    else { return nil }
+    ctx.interpolationQuality = .high
+    ctx.draw(square, in: CGRect(x: 0, y: 0, width: size, height: size))
+    guard let out = ctx.makeImage(),
+          let jpeg = NSBitmapImageRep(cgImage: out).representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+    else { return nil }
+    return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+  }
+
+  /// Ask for a picture and save it to the store. Returns false if cancelled / unreadable.
+  @MainActor
+  @discardableResult
+  static func choose() -> Bool {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.image]
+    panel.allowsMultipleSelection = false
+    panel.message = "Pick a profile picture for the progress ring"
+    NSApp.activate(ignoringOtherApps: true)
+    guard panel.runModal() == .OK, let url = panel.url, let data = dataURL(from: url) else { return false }
+    Store.update { s in s["profile"] = ["avatar": data] }
+    return true
+  }
+
+  @MainActor
+  static func remove() {
+    Store.update { s in s["profile"] = [String: Any]() }
+  }
+}
+
 @MainActor
 final class ProgressModel: ObservableObject {
   @Published var view: [String: Any] = [:]
+  @Published var avatar: NSImage?
   @Published var days: [ProgressDay] = []
   @Published var picked: [String: Any]?
   private var at: (year: Int, month: Int)?
@@ -27,6 +81,7 @@ final class ProgressModel: ObservableObject {
     if let at { args["year"] = at.year; args["month"] = at.month }
     guard let v = Engine.dict(Engine.shared.invoke("progressView", args)) else { return }
     view = v
+    avatar = Avatar.image(store)
     let month = v["month"] as? [String: Any] ?? [:]
     let weeks = month["weeks"] as? [[[String: Any]]] ?? []
     days = weeks.flatMap { $0 }.compactMap { d in
@@ -111,14 +166,30 @@ struct ProgressPanel: View {
     let ms = num(t["ms"]), goal = max(1, num(t["goalMs"]))
     let met = Engine.bool(t["goalMet"])
     let answers = Int(num(t["answers"])), correct = Int(num(t["correct"]))
+    let line = 4 * scale
+    let d = 58 * scale
     return HStack(spacing: 14 * scale) {
+      // strokeBorder keeps the ring inside its frame (a plain stroke spills
+      // half its width outside and the scroll view clipped it).
       ZStack {
-        Circle().stroke(Ink.hair(scheme), lineWidth: 4 * scale)
-        Circle().trim(from: 0, to: min(1, ms / goal))
-          .stroke(met ? Ink.ok : Ink.gold, style: StrokeStyle(lineWidth: 4 * scale, lineCap: .round))
+        Circle().strokeBorder(Ink.hair(scheme), lineWidth: line)
+        Circle().inset(by: line / 2).trim(from: 0, to: min(1, ms / goal))
+          .stroke(met ? Ink.ok : Ink.gold, style: StrokeStyle(lineWidth: line, lineCap: .round))
           .rotationEffect(.degrees(-90))
+        if let img = model.avatar {
+          Image(nsImage: img)
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fill)
+            .frame(width: d - line * 2 - 6 * scale, height: d - line * 2 - 6 * scale)
+            .clipShape(Circle())
+        } else {
+          Text(minutes(ms)).font(.system(size: 11 * scale, weight: .semibold, design: .monospaced))
+            .foregroundColor(met ? Ink.ok : Ink.mute(scheme))
+        }
       }
-      .frame(width: 48 * scale, height: 48 * scale)
+      .frame(width: d, height: d)
+      .padding(1 * scale)
       VStack(alignment: .leading, spacing: 2 * scale) {
         label("today")
         HStack(alignment: .firstTextBaseline, spacing: 3 * scale) {
@@ -161,7 +232,7 @@ struct ProgressPanel: View {
 
   private var calendar: some View {
     let total = model.month["total"] as? [String: Any] ?? [:]
-    let cols = Array(repeating: GridItem(.flexible(), spacing: 4 * scale), count: 7)
+    let cols = Array(repeating: GridItem(.flexible(), spacing: 5 * scale), count: 7)
     return VStack(alignment: .leading, spacing: 7 * scale) {
       HStack {
         navButton("‹") { model.shift(-1) }
@@ -171,9 +242,10 @@ struct ProgressPanel: View {
         Spacer()
         navButton("›", disabled: model.atThisMonth) { model.shift(1) }
       }
-      LazyVGrid(columns: cols, spacing: 4 * scale) {
+      LazyVGrid(columns: cols, spacing: 5 * scale) {
         ForEach(Array(["M", "T", "W", "T", "F", "S", "S"].enumerated()), id: \.offset) { _, d in
-          Text(d).font(.system(size: 9 * scale, weight: .medium)).foregroundColor(Ink.mute(scheme))
+          Text(d).font(.system(size: 9 * scale, weight: .semibold)).tracking(0.5 * scale)
+            .foregroundColor(Ink.mute(scheme).opacity(0.8))
         }
         ForEach(model.days) { d in dayCell(d) }
       }
@@ -182,7 +254,7 @@ struct ProgressPanel: View {
         Spacer()
         HStack(spacing: 2 * scale) {
           note("less")
-          ForEach(0..<5) { l in RoundedRectangle(cornerRadius: 2 * scale).fill(fill(l)).frame(width: 8 * scale, height: 8 * scale) }
+          ForEach(0..<5) { l in RoundedRectangle(cornerRadius: 2.5 * scale, style: .continuous).fill(fill(l)).frame(width: 9 * scale, height: 9 * scale) }
           note("goal")
         }
       }
@@ -190,20 +262,25 @@ struct ProgressPanel: View {
     }
   }
 
+  /// Practised days are filled (gold, green at the goal); empty past days
+  /// are a faint tile; future days are just a dim number. Today gets a gold
+  /// ring, the tapped day a bright one. All strokes sit inside the tile.
   private func dayCell(_ d: ProgressDay) -> some View {
     let picked = Engine.string(model.picked?["date"]) == d.id
+    let shape = RoundedRectangle(cornerRadius: 7 * scale, style: .continuous)
+    let ink: Color = d.level >= 3 ? Color(red: 0.118, green: 0.102, blue: 0.090)
+      : d.level > 0 ? Ink.glyph(scheme) : Ink.mute(scheme)
     return Button { model.pick(d.id) } label: {
       Text("\(d.day)")
-        .font(.system(size: 10 * scale, weight: .medium, design: .monospaced))
-        .foregroundColor(d.level >= 3 ? Color(red: 0.118, green: 0.102, blue: 0.090) : d.level > 0 ? Ink.glyph(scheme) : Ink.mute(scheme))
+        .font(.system(size: 10 * scale, weight: d.today ? .bold : .medium, design: .rounded))
+        .foregroundColor(d.future ? Ink.mute(scheme).opacity(0.45) : ink)
         .frame(maxWidth: .infinity)
-        .frame(height: 26 * scale)
-        .background(RoundedRectangle(cornerRadius: 5 * scale).fill(fill(d.level)))
+        .frame(height: 28 * scale)
+        .background(shape.fill(d.future ? .clear : fill(d.level)))
         .overlay(
-          RoundedRectangle(cornerRadius: 5 * scale)
-            .stroke(picked ? Ink.glyph(scheme) : d.today ? Ink.gold : .clear, lineWidth: (picked ? 1.5 : 1.2) * scale)
+          shape.strokeBorder(picked ? Ink.glyph(scheme) : d.today ? Ink.gold : .clear,
+                             lineWidth: (picked ? 1.5 : 1.2) * scale)
         )
-        .opacity(d.future ? 0.35 : 1)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -218,7 +295,7 @@ struct ProgressPanel: View {
     case 2: return Ink.gold.opacity(0.5)
     case 3: return Ink.gold.opacity(0.8)
     case 4: return Ink.ok
-    default: return Ink.hair(scheme).opacity(0.6)
+    default: return Ink.hair(scheme).opacity(scheme == .dark ? 0.75 : 0.5)
     }
   }
 
@@ -298,7 +375,12 @@ struct ProgressPanel: View {
 
   private func navButton(_ t: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-      Text(t).font(.system(size: 16 * scale)).foregroundColor(Ink.gold).frame(width: 26 * scale, height: 20 * scale).contentShape(Rectangle())
+      Image(systemName: t == "‹" ? "chevron.left" : "chevron.right")
+        .font(.system(size: 10 * scale, weight: .semibold))
+        .foregroundColor(Ink.gold)
+        .frame(width: 24 * scale, height: 24 * scale)
+        .background(Circle().fill(Ink.hair(scheme).opacity(0.7)))
+        .contentShape(Circle())
     }
     .buttonStyle(.plain)
     .disabled(disabled)

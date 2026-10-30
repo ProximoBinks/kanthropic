@@ -10,6 +10,16 @@ enum Kanthropic {
     // renders the panel to a PNG and exits, for checking layout without
     // clicking through the menu bar. Doesn't touch the running app.
     let args = CommandLine.arguments
+    // `Kanthropic --set-avatar photo.png`: same as Settings → Profile picture.
+    if let i = args.firstIndex(of: "--set-avatar"), i + 1 < args.count {
+      if let data = Avatar.dataURL(from: URL(fileURLWithPath: args[i + 1])) {
+        Store.update { s in s["profile"] = ["avatar": data] }
+        print("avatar set (\(data.count / 1024) KB)")
+      } else {
+        print("couldn't read \(args[i + 1])")
+      }
+      return
+    }
     if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
       Snapshot.render(to: args[i + 1], mode: args.count > i + 2 ? args[i + 2] : "study",
                       dark: args.count > i + 3 ? args[i + 3] != "light" : true,

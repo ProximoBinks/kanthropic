@@ -42,9 +42,9 @@ import { writeAtomic, withLock } from "./fsutil.mjs";
 /** @type {{ script: Script, frontMs: number, backMs: number, image: "auto"|"on"|"off", autoAdvance: boolean, continuous: boolean, checkinEvery: number, popOnThink: boolean, glyphFont: string }} */
 export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true, continuous: false, checkinEvery: 3, popOnThink: true, glyphFont: "HiraginoSans-W5" };
 
-/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[], learnedMigrated: boolean, rote: string[], roteKind: "row" | "cram" | null, dakutenStreaks: Record<string, number>, activeDrill: string | null, drillProgress: Record<string, any>, activity: Record<string, Record<string, any>> }} */
+/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[], learnedMigrated: boolean, rote: string[], roteKind: "row" | "cram" | null, dakutenStreaks: Record<string, number>, activeDrill: string | null, drillProgress: Record<string, any>, activity: Record<string, Record<string, any>>, profile: { avatar?: string } }} */
 export function emptyStore() {
-  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [], learnedMigrated: false, rote: [], roteKind: null, dakutenStreaks: {}, activeDrill: null, drillProgress: {}, activity: {} };
+  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [], learnedMigrated: false, rote: [], roteKind: null, dakutenStreaks: {}, activeDrill: null, drillProgress: {}, activity: {}, profile: {} };
 }
 
 /** Config with hostile/hand-edited values coerced back to sane ones — a bad
@@ -85,6 +85,7 @@ export function load() {
       drillProgress: data.drillProgress && typeof data.drillProgress === "object" ? data.drillProgress : {},
       dakutenStreaks: data.dakutenStreaks && typeof data.dakutenStreaks === "object" ? data.dakutenStreaks : {},
       activity: data.activity && typeof data.activity === "object" ? data.activity : {},
+      profile: data.profile && typeof data.profile === "object" ? data.profile : {},
     };
   } catch {
     if (raw.trim()) {

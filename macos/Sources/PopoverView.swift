@@ -560,6 +560,26 @@ struct SettingsView: View {
             .frame(width: 130 * scale)
           }
           .padding(.vertical, 4 * scale)
+          HStack {
+            Text("Profile picture")
+              .font(.system(size: 13 * scale))
+              .foregroundColor(Ink.glyph(scheme))
+            Spacer()
+            if session.progress.avatar != nil {
+              Button("Remove") { Avatar.remove(); session.progress.refresh() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12 * scale))
+                .foregroundColor(Ink.mute(scheme))
+            }
+            Button(session.progress.avatar == nil ? "Choose…" : "Change…") {
+              if Avatar.choose() { session.progress.refresh() }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12 * scale, weight: .medium))
+            .foregroundColor(Ink.gold)
+          }
+          .padding(.vertical, 4 * scale)
+          .onAppear { session.progress.refresh() }
           toggleRow("Pop up while Grok thinks", isOn: session.popOnThink) {
             session.setPopOnThink($0)
           }

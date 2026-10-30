@@ -42,6 +42,7 @@ export function progressView(store, { year, month, now = Date.now() } = {}) {
       katakana: summary(store, "katakana", now),
     },
     phrases: { total: ph.total, met: ph.introduced, mastered: ph.mastered, speaking: ph.saying, due: ph.due },
+    avatar: typeof store.profile?.avatar === "string" ? store.profile.avatar : null,
   };
 }
 

@@ -11,6 +11,7 @@
  *   drill             { rote, roteKind, activeDrill }
  *   dakuten           dakuten streaks
  *   activity:<date>:<device>  that device's practice that day (activity.mjs)
+ *   profile           { avatar }: a small JPEG data URL for the progress ring
  *
  * A missing key is the same as "absent", so deletions sync as `null`.
  * Device-local things (config, ambient, learnedMigrated) never leave the machine.
@@ -60,6 +61,7 @@ export function flatten(store) {
   }
   const dak = store?.dakutenStreaks;
   if (dak && typeof dak === "object" && Object.keys(dak).length) out.dakuten = clean(dak);
+  if (typeof store?.profile?.avatar === "string" && store.profile.avatar) out.profile = { avatar: store.profile.avatar };
   return out;
 }
 
@@ -97,6 +99,7 @@ export function unflatten(flat, local) {
     roteKind: drill?.roteKind || null,
     activeDrill: drill?.activeDrill || null,
     dakutenStreaks: flat.dakuten || {},
+    profile: flat.profile || {},
   };
 }
 
