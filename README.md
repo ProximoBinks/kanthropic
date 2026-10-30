@@ -58,6 +58,34 @@ A correct answer is FSRS *Good*, a miss is *Again*. A character is **mastered** 
 
 Hiragana auto-advances to katakana once hiragana is fully mastered. Toggle **あ / ア** any time.
 
+## Sync + phone app (optional)
+
+Progress can sync through [Convex](https://convex.dev) to a PWA you add to your phone's home screen. The menu bar app, the CLI and the phone run the same engine. Sync is per card: studying different characters on two devices merges cleanly, and when both devices graded the same card, the more recent review wins.
+
+```sh
+npx convex dev --once                     # deploy convex/ (first run creates the project, writes .env.local)
+npm run web:build                         # PWA → web/dist (reads VITE_CONVEX_URL from .env.local)
+# host web/dist anywhere with HTTPS (e.g. `vercel deploy web/dist`)
+
+npx kanthropic sync setup --url https://<deployment>.convex.cloud --web https://<your pwa>
+```
+
+`sync setup` prints a pairing link and a QR code. Open it on your phone, then **Share → Add to Home Screen**. The menu bar app syncs when you open or close the panel, and every few minutes in between. The PWA syncs live and works offline. `kanthropic sync` syncs by hand, `sync link` shows the QR code again, and `sync off` stops syncing on this machine.
+
+The pairing key is the only credential, so anyone with the link can read and edit your progress.
+
+## Phrases (phone app)
+
+The **progress** tab (calendar icon) logs how long you practise each day, across every device that syncs: today's time against a 15-minute goal, your streak, the last 7 days and all time, a month calendar shaded by time practised (tap a day for its answers, accuracy, and phrases built / heard / said), and how far through hiragana, katakana and the phrases you are. Time is active time, measured between answers: a gap of more than 90 seconds counts as a break, so leaving the app open doesn't inflate it.
+
+The **phrases** tab teaches 517 phrases in 24 topics, in three groups: visiting family (staying with a Japanese family, including Hiroshima-ben to recognise), everyday, and travel & emergencies. You see a new phrase once, then each review moves through three modes as it sticks: **build** it from shuffled kana tiles while you're learning it, **listen** to it with no text and pick the meaning once it graduates, and **say it** out loud from the English and grade yourself (again / hard / good / easy) once it's stable (FSRS stability of a week or more and 80%+ accuracy). Every third review of a spoken phrase is a listening one, a miss drops it back to tiles, Hiroshima-ben stops at listening, and no phrase goes longer than a month between reviews. Answers are scheduled with the same FSRS engine as the kana, and phrases you got wrong come back first. You get 10 new phrases a day, and reviews are never capped. Each phrase is pre-recorded in four Google Chirp 3 HD voices (Iapetus, Orus, Rasalgethi, Sadaltager), and a random one plays each time unless you pick one in settings; the device's Japanese voice is the fallback.
+
+The phrases come from the [Japanese Phrasebook](https://github.com/Lorti/phrasebook), which is built on [Wikitravel's Japanese phrasebook](https://wikitravel.org/en/Japanese_phrasebook) and licensed **CC BY-SA 3.0**. To rebuild the deck (readings and tiles come from kuromoji, checked against the source romaji):
+
+```sh
+node scripts/build-phrases.mjs path/to/phrasebook/bin/markup
+```
+
 ## CLI (optional / Linux)
 
 The same engine, in a terminal:

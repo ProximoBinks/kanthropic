@@ -3,7 +3,7 @@ import Combine
 import ServiceManagement
 
 enum DrillMode: String {
-  case learn, rote, study, dakuten, chart
+  case learn, rote, study, dakuten, chart, phrases, progress
 }
 
 enum GradeFlash {
@@ -64,6 +64,15 @@ final class Session: ObservableObject {
   @Published var drillSets: [DrillSet] = []
   @Published var cram = false
 
+  let phrases = PhraseModel()
+  let progress = ProgressModel()
+  private var phraseSink: AnyCancellable?
+
+  init() {
+    // Settings reads phrases.speakOn through the session; pass changes along.
+    phraseSink = phrases.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+  }
+
   private var learnGlyphs: [String] = []
   private var pendingRote: [String] = []
   private var returnToChart = false
@@ -85,6 +94,28 @@ final class Session: ObservableObject {
     if mode == .rote, activeDrill != nil, !busy {
       let store = Store.load()
       if restoreDrillProgress(store) { dealRote(store) }
+    }
+  }
+
+  /// Another device's answers arrived. Refresh what's on screen, but never
+  /// pull a card out from under someone mid-answer.
+  func remoteChanged() {
+    phrases.remoteChanged()
+    guard !busy, answer.isEmpty, !showSettings else { return }
+    let store = Store.load()
+    switch mode {
+    case .chart:
+      refreshSummary(store)
+      refreshChart(store)
+    case .progress:
+      progress.refresh(store)
+    case .study:
+      if drillPicker { refreshSummary(store) } else { dealStudy(store) }
+    case .rote:
+      activeDrill = Engine.string(store["activeDrill"]) ?? activeDrill
+      dealRote(store)
+    default:
+      refreshSummary(store)
     }
   }
 
@@ -192,6 +223,12 @@ final class Session: ObservableObject {
     case .chart:
       mode = .chart
       refreshChart(store)
+    case .phrases:
+      mode = .phrases
+      phrases.open()
+    case .progress:
+      mode = .progress
+      progress.open()
     case .rote:
       break
     }
@@ -220,7 +257,10 @@ final class Session: ObservableObject {
   }
 
   func openSettings() { showSettings = true }
-  func closeSettings() { showSettings = false }
+  func closeSettings() {
+    showSettings = false
+    remoteChanged() // pick up anything a sign-in or sync pulled in meanwhile
+  }
 
   func setScript(_ next: String) {
     guard next != script else { return }
@@ -271,8 +311,11 @@ final class Session: ObservableObject {
             "store": s, "key": key, "glyph": self.glyph, "correct": ok,
             "now": Date().timeIntervalSince1970 * 1000,
           ])), let next = result["store"] as? [String: Any] { s = next }
+          Store.logAnswer(&s, kind: "kana", correct: ok)
         }
         restoreDrillProgress(saved)
+      } else {
+        Store.update { Store.logAnswer(&$0, kind: "kana", correct: ok) }
       }
       let delay: Double = ok ? 0.4 : 1.2
       let work = DispatchWorkItem { [weak self] in
@@ -294,18 +337,20 @@ final class Session: ObservableObject {
       return
     }
 
-    if let card = Engine.shared.invoke("grade", [
+    let card = Engine.shared.invoke("grade", [
       "script": script,
       "glyph": glyph,
       "store": store,
       "correct": ok,
       "now": Date().timeIntervalSince1970 * 1000,
-    ]) {
-      Store.update { s in
+    ])
+    Store.update { s in
+      if let card {
         var cards = s["cards"] as? [String: Any] ?? [:]
         cards[self.glyph] = card
         s["cards"] = cards
       }
+      Store.logAnswer(&s, kind: "kana", correct: ok)
     }
     scoreSeen += 1
     busy = true
@@ -727,6 +772,7 @@ final class Session: ObservableObject {
     ])) {
       Store.update { $0["dakutenStreaks"] = next }
     }
+    Store.update { Store.logAnswer(&$0, kind: "kana", correct: ok) }
     scoreSeen += 1
     busy = true
     if ok {

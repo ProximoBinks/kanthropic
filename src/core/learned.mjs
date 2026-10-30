@@ -56,6 +56,7 @@ export function ensureLearned(store) {
   store.learnedMigrated = true;
   const set = new Set(store.learned);
   for (const g of Object.keys(store.cards)) {
+    if (g.startsWith("phrase:")) continue; // phrase cards aren't kana
     if ((store.cards[g]?.seen ?? 0) > 0) set.add(g);
   }
   store.learned = [...set];

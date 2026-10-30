@@ -7,6 +7,7 @@ import { stdout } from "node:process";
 import { checkAnswer, entryByGlyph } from "../data/kana.mjs";
 import { load, update } from "../core/store.mjs";
 import { gradeCard } from "../core/scheduler.mjs";
+import { logAnswer } from "../core/activity.mjs";
 import { ensureLearned, learnedCount, SCRIPT_TOTAL } from "../core/learned.mjs";
 import { nextRevise, nextUnlearnedRow, resolveScript, scriptMastered } from "../core/flow.mjs";
 import { walkRow } from "./learn.mjs";
@@ -246,6 +247,7 @@ export async function runDrill(opts = {}) {
       const ok = checkAnswer(answer, entry);
       update((st) => {
         st.cards[next.glyph] = gradeCard(script, next.glyph, st.cards[next.glyph], ok);
+        logAnswer(st, { kind: "kana", correct: ok });
       });
       seen++;
       const aw = [...answer].length;

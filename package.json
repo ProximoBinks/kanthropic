@@ -21,7 +21,12 @@
     "app": "node src/cli/index.mjs app",
     "build:engine": "esbuild src/core/engine.mjs --bundle --format=iife --global-name=Kanthropic --platform=neutral --target=es2020 --outfile=macos/Resources/engine.js",
     "build:app": "bash macos/build.sh",
-    "prepublishOnly": "vitest run && tsc -p jsconfig.json"
+    "prepublishOnly": "vitest run && tsc -p jsconfig.json",
+    "web": "vite",
+    "web:build": "vite build",
+    "web:preview": "vite preview",
+    "convex": "convex dev",
+    "web:deploy": "vite build && vercel deploy web/dist --prod --yes --project kanthropic"
   },
   "engines": {
     "node": ">=18"
@@ -30,11 +35,17 @@
     "chafa-wasm": "^0.3.3",
     "esbuild": "^0.25.12",
     "opentype.js": "^2.0.0",
+    "qrcode-terminal": "^0.12.0",
     "ts-fsrs": "^5.4.1"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
     "@types/node": "^26.1.0",
+    "convex": "^1.48.0",
+    "kuromoji": "^0.1.2",
+    "preact": "^11.0.2",
     "typescript": "^6.0.3",
+    "vite": "^6.4.5",
     "vitest": "^2.0.5"
   },
   "keywords": [

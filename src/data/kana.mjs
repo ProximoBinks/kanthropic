@@ -216,7 +216,7 @@ const BY_GLYPH = {
 
 /** @param {Script} script @param {string} kana @returns {(KanaEntry & { group: KanaGroup }) | undefined} */
 export function entryByGlyph(script, kana) {
-  return BY_GLYPH[script].get(kana);
+  return BY_GLYPH[script]?.get(kana);
 }
 
 /** @param {string} s @returns {string} */

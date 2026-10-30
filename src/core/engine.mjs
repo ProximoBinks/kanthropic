@@ -10,11 +10,39 @@ import { ENTRIES, DAKUTEN_LESSONS, checkAnswer, entryByGlyph, glyph as glyphOf }
 import { mnemonicFor } from "../data/mnemonics.mjs";
 import { gradeCard } from "./scheduler.mjs";
 import { ensureLearned } from "./learned.mjs";
+import { emptyBase, finish as syncFinish, prepare as syncPrepare } from "./sync.mjs";
+import { activityDay, activityMonth, activitySummary, formatDuration, logAnswer } from "./activity.mjs";
+import {
+  audioFile, VOICES as PHRASE_VOICES, cardKey as phraseCardKey, checkPhrase, gradePhrase, nextPhrase, phraseById, phraseCard, phraseQuiz, phraseTopics, PHRASE_SOURCE,
+} from "./phrases.mjs";
 import {
   beginDrill, checkDakuten, drillSets, gradeDakuten, markDueNow, nextDakuten, nextRevise, nextRote,
   nextUnlearnedRow, progressChart, resetLearning, resetStudying, resolveScript, rowsFor, summary,
   ROTE_STREAK,
 } from "./flow.mjs";
+
+/**
+ * Everything the progress tab shows, in one call so the web and Mac apps
+ * render the same numbers: practice time and streaks, the month calendar,
+ * and where the kana and phrases stand.
+ * @param {Record<string, any>} store
+ * @param {{ year?: number, month?: number, now?: number }} [opts]  month is 1–12; defaults to this month
+ */
+export function progressView(store, { year, month, now = Date.now() } = {}) {
+  const d = new Date(now);
+  const y = year ?? d.getFullYear();
+  const m = month ?? d.getMonth() + 1;
+  const ph = phraseTopics(store, now);
+  return {
+    summary: activitySummary(store, { now }),
+    month: activityMonth(store, { year: y, month: m, now }),
+    kana: {
+      hiragana: summary(store, "hiragana", now),
+      katakana: summary(store, "katakana", now),
+    },
+    phrases: { total: ph.total, met: ph.introduced, mastered: ph.mastered, speaking: ph.saying, due: ph.due },
+  };
+}
 
 /**
  * Plain-JSON view of one character in learn mode.
@@ -148,6 +176,53 @@ export function invoke(op, p = {}) {
       }
       case "dakutenCount":
         return DAKUTEN_LESSONS.length;
+      // Phrases (src/core/phrases.mjs). gradePhrase returns the updated store.
+      case "phraseTopics":
+        return phraseTopics(p.store || {}, p.now ?? Date.now());
+      case "nextPhrase":
+        return nextPhrase(p.store || {}, {
+          topic: p.topic ?? null, lastId: p.lastId ?? null, now: p.now ?? Date.now(), extraNew: p.extraNew ?? 0,
+        });
+      case "phrase":
+        return phraseById(p.id);
+      case "phraseQuiz":
+        return phraseQuiz(p.id);
+      case "phraseCard":
+        return phraseCard(p.store || {}, p.id, p.kind ?? "review");
+      case "checkPhrase":
+        return checkPhrase(p.id, p.picked);
+      case "gradePhrase": {
+        const store = p.store || {};
+        store.cards = { ...(store.cards || {}), [phraseCardKey(p.id)]: gradePhrase(store, p.id, !!p.correct, p.now ?? Date.now(), { mode: p.mode ?? "build", rating: p.rating ?? null }) };
+        return { store };
+      }
+      // Practice log (src/core/activity.mjs). logAnswer returns the updated store.
+      case "logAnswer": {
+        const store = p.store || {};
+        logAnswer(store, { kind: p.kind, correct: !!p.correct, mode: p.mode ?? "", isNew: !!p.isNew, now: p.now ?? Date.now() });
+        return { store };
+      }
+      case "activitySummary":
+        return activitySummary(p.store || {}, { now: p.now ?? Date.now(), goalMin: p.goalMin ?? undefined });
+      case "activityMonth":
+        return activityMonth(p.store || {}, { year: p.year, month: p.month, now: p.now ?? Date.now(), goalMin: p.goalMin ?? undefined });
+      case "activityDay":
+        return activityDay(p.store || {}, p.date);
+      case "progressView":
+        return progressView(p.store || {}, { year: p.year, month: p.month, now: p.now ?? Date.now() });
+      case "formatDuration":
+        return formatDuration(p.ms);
+      case "phraseAudio":
+        return audioFile(p.id, p.voice ?? null);
+      case "phraseVoices":
+        return PHRASE_VOICES;
+      case "phraseSource":
+        return PHRASE_SOURCE;
+      // Cloud sync: the host does the HTTP call and the file I/O (see sync.mjs).
+      case "syncPrepare":
+        return syncPrepare(p.base || emptyBase(), p.store || {});
+      case "syncFinish":
+        return syncFinish(p.base || emptyBase(), p.sent || {}, p.reply, p.store || {});
       default:
         return { error: "unknown op " + op };
     }

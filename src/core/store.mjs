@@ -20,7 +20,9 @@
  *   elapsed_days: number, scheduled_days: number, learning_steps: number,
  *   reps: number, lapses: number, state: number, last_review?: number,
  *   seen: number, misses: number,
- *   goodDays?: number, lastGoodDay?: number, lastGoodAt?: number
+ *   goodDays?: number, lastGoodDay?: number, lastGoodAt?: number,
+ *   introducedAt?: number,
+ *   modes?: Record<string, { seen: number, misses: number }>, lastMiss?: boolean, saysSinceListen?: number
  * }} CardState
  */
 import { readFileSync, copyFileSync } from "node:fs";
@@ -40,9 +42,9 @@ import { writeAtomic, withLock } from "./fsutil.mjs";
 /** @type {{ script: Script, frontMs: number, backMs: number, image: "auto"|"on"|"off", autoAdvance: boolean, continuous: boolean, checkinEvery: number, popOnThink: boolean, glyphFont: string }} */
 export const DEFAULT_CONFIG = { script: "hiragana", frontMs: 2600, backMs: 1700, image: "auto", autoAdvance: true, continuous: false, checkinEvery: 3, popOnThink: true, glyphFont: "HiraginoSans-W5" };
 
-/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[], learnedMigrated: boolean, rote: string[], roteKind: "row" | "cram" | null, dakutenStreaks: Record<string, number>, activeDrill: string | null, drillProgress: Record<string, any> }} */
+/** @returns {{ version: number, config: typeof DEFAULT_CONFIG, cards: Record<string, CardState>, ambient: any, learned: string[], learnedMigrated: boolean, rote: string[], roteKind: "row" | "cram" | null, dakutenStreaks: Record<string, number>, activeDrill: string | null, drillProgress: Record<string, any>, activity: Record<string, Record<string, any>> }} */
 export function emptyStore() {
-  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [], learnedMigrated: false, rote: [], roteKind: null, dakutenStreaks: {}, activeDrill: null, drillProgress: {} };
+  return { version: 1, config: { ...DEFAULT_CONFIG }, cards: {}, ambient: null, learned: [], learnedMigrated: false, rote: [], roteKind: null, dakutenStreaks: {}, activeDrill: null, drillProgress: {}, activity: {} };
 }
 
 /** Config with hostile/hand-edited values coerced back to sane ones — a bad
@@ -82,6 +84,7 @@ export function load() {
       activeDrill: typeof data.activeDrill === "string" ? data.activeDrill : null,
       drillProgress: data.drillProgress && typeof data.drillProgress === "object" ? data.drillProgress : {},
       dakutenStreaks: data.dakutenStreaks && typeof data.dakutenStreaks === "object" ? data.dakutenStreaks : {},
+      activity: data.activity && typeof data.activity === "object" ? data.activity : {},
     };
   } catch {
     if (raw.trim()) {

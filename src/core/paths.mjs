@@ -11,6 +11,11 @@ export const KANTHROPIC_DIR = join(home, ".kanthropic");
 /** The local FSRS/progress store the drill writes and the ambient tick reads. */
 export const PROGRESS_PATH = join(KANTHROPIC_DIR, "progress.json");
 
+/** Cloud sync settings ({ convexUrl, key, webUrl }) and the last synced
+ *  snapshot. Shared by the CLI and the macOS app. */
+export const SYNC_CONFIG_PATH = join(KANTHROPIC_DIR, "sync.json");
+export const SYNC_BASE_PATH = join(KANTHROPIC_DIR, "sync-base.json");
+
 /** The status-line script the installer generates and Claude Code runs. */
 export const STATUSLINE_SCRIPT_PATH = join(KANTHROPIC_DIR, "kanthropic-statusline.mjs");
 

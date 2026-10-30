@@ -29,6 +29,8 @@ import { runLearn } from "./learn.mjs";
 import { runReset } from "./reset.mjs";
 import { glyphImage, glyphSixel, pickRenderer, probeCellHeight } from "./glyphImage.mjs";
 import { glyphChafa } from "./glyphChafa.mjs";
+import { runSync, syncQuietly } from "./sync.mjs";
+import { runAccount } from "./account.mjs";
 
 const accent = (s) => `\x1b[38;5;176m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -272,6 +274,8 @@ function help() {
     + `  ${bold("grok-install")}         pop the menu bar app while Grok Build thinks\n`
     + `  ${bold("grok-uninstall")}       remove those hooks\n`
     + `  ${bold("status")}               progress\n`
+    + `  ${bold("account")} signup|login  an account that syncs your progress to your phone\n`
+    + `  ${bold("sync")} [setup|link|off] sync now / manual pairing\n`
     + `  ${bold("config")} [--script k]  [--pop on|off] pop while Grok thinks\n\n`
     + dim("  legacy: session · watch · install · hooks-install  (Claude / tmux)\n\n"));
 }
@@ -315,17 +319,23 @@ async function main() {
       break;
     }
     case "learn":
-      await runLearn({ script: scriptFrom(flags, store.config.script) });
+      await syncQuietly();
+      await runLearn({ script: scriptFrom(flags, load().config.script) });
+      await syncQuietly();
       break;
     case "drill":
       // Pass a script only when --script is explicit; otherwise let the drill
       // resolve it (auto-advance hiragana → katakana once hiragana is mastered).
       // --count N runs a bounded, scored session (the old `study`).
+      await syncQuietly();
       await runDrill({
         script: flags.script ? scriptFrom(flags, "hiragana") : undefined,
         count: flags.count ? +flags.count : undefined,
       });
+      await syncQuietly();
       break;
+    case "sync": await runSync(rest, flags); break;
+    case "account": await runAccount(rest, flags); break;
     case "watch":
       // The tmux-free integration: run this in any terminal split (VS Code,
       // iTerm, whatever) next to a plain `claude`. It idles quietly and starts

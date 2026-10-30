@@ -15,6 +15,11 @@ import { MASTER_DAYS, MASTERED_STATE } from "./learned.mjs";
 // comes back the NEXT DAY before it can graduate — so "mastered" reflects recall
 // across a real gap, not two passes seconds apart.
 const f = fsrs(generatorParameters({ enable_fuzz: true, learning_steps: ["1m", "10m", "1d"] }));
+// Phrases cap the gap at a month. Tile and listening answers are recognition,
+// easier than recall, so an unbroken run of them would otherwise push a
+// phrase out for a year after four reviews — and you need them in conversation.
+export const PHRASE_MAX_DAYS = 30;
+const fPhrase = fsrs(generatorParameters({ enable_fuzz: true, learning_steps: ["1m", "10m", "1d"], maximum_interval: PHRASE_MAX_DAYS }));
 
 const DAY_MS = 86_400_000;
 /** LOCAL-timezone day index for `ms` — used to count *distinct* days a card
@@ -55,19 +60,19 @@ function toCard(c, now) {
  * @param {CardState | undefined} prev
  * @param {boolean} correct
  * @param {Date} [now]
+ * @param {number | null} [rating]  an explicit ts-fsrs Rating (1–4); overrides `correct`
  * @returns {CardState}
  */
-export function gradeCard(script, glyph, prev, correct, now = new Date()) {
+export function gradeCard(script, glyph, prev, correct, now = new Date(), rating = null) {
   const entry = entryByGlyph(script, glyph);
   const romaji = entry ? entry.romaji : (prev?.romaji ?? "");
-  const rating = correct ? Rating.Good : Rating.Again;
   let next;
   try {
-    next = f.next(toCard(prev, now), now, rating).card;
+    next = (/** @type {string} */ (script) === "phrase" ? fPhrase : f).next(toCard(prev, now), now, rating ?? (correct ? Rating.Good : Rating.Again)).card;
   } catch {
     // Corrupt/legacy card state (e.g. a null stability) must not crash the drill
     // — restart this card's schedule cleanly instead.
-    next = f.next(createEmptyCard(now), now, rating).card;
+    next = (/** @type {string} */ (script) === "phrase" ? fPhrase : f).next(createEmptyCard(now), now, rating ?? (correct ? Rating.Good : Rating.Again)).card;
   }
 
   // Track the number of DISTINCT days the card was recalled correctly. A card

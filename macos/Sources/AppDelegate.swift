@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     GrokHooks.installIfNeeded()
     session.appear()
     session.popOnThink = Store.popOnThink()
+    Cloud.shared.onRemoteChange = { [weak self] in self?.session.remoteChanged() }
+    Cloud.shared.start()
 
     // Sit to the right of Hidden Bar's separator (~518–550) and left of
     // system items (~150–240). Smaller number = further right.
@@ -111,6 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self?.hide()
         return nil
       }
+      // Phrases have no text field: digits pick tiles, ⌫ undoes, return checks.
+      if let s = self?.session, s.mode == .phrases, !s.showSettings, s.phrases.handleKey(event) {
+        return nil
+      }
       return event
     }
 
@@ -147,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
     session.requestFocus()
+    Cloud.shared.sync() // pull what the phone did; refreshes the card if you haven't started typing
   }
 
   private func hide() {
@@ -154,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     panel.orderOut(nil)
     // Resizing lasts only for this presentation, never across dismissals.
     panel.setContentSize(Self.defaultPanelSize)
+    Cloud.shared.sync() // push this sitting's answers
   }
 
   private func hideIfClickOutside() {
@@ -217,6 +225,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
   private func showMenu() {
     let menu = NSMenu()
+
+    Cloud.shared.refresh()
+    let account = NSMenuItem(
+      title: Cloud.shared.email.map { "Signed in as \($0)" } ?? (Cloud.shared.enabled ? "Syncing with a pairing key" : "Not signed in — Settings to sync"),
+      action: nil,
+      keyEquivalent: ""
+    )
+    account.isEnabled = false
+    menu.addItem(account)
+    menu.addItem(.separator())
 
     let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
     settings.target = self

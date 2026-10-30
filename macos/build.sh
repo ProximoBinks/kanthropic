@@ -34,6 +34,10 @@ cp "$ROOT/macos/Info.plist" "$OUT/Contents/Info.plist"
 cp "$ROOT/macos/Resources/engine.js" "$OUT/Contents/Resources/engine.js"
 cp "$ROOT/src/core/grok-hook.sh" "$OUT/Contents/Resources/grok-hook.sh"
 chmod 755 "$OUT/Contents/Resources/grok-hook.sh"
+# Pre-recorded phrase audio (scripts/build-audio.mjs), so phrases play offline.
+if [ -d "$ROOT/web/public/audio" ]; then
+  cp -R "$ROOT/web/public/audio" "$OUT/Contents/Resources/audio"
+fi
 if [ -f "$ROOT/assets/fonts/kana.ttf" ]; then
   cp "$ROOT/assets/fonts/kana.ttf" "$OUT/Contents/Resources/kana.ttf"
 fi
@@ -47,6 +51,7 @@ swiftc -parse-as-library -module-name Kanthropic \
   -framework SwiftUI \
   -framework AppKit \
   -framework JavaScriptCore \
+  -framework AVFoundation \
   -framework ServiceManagement \
   -framework Combine \
   $(ls "$ROOT"/macos/Sources/*.swift) \

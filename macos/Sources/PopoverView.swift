@@ -74,9 +74,13 @@ private struct ScaledPopoverContent: View {
   private var drill: some View {
     VStack(alignment: .leading, spacing: 0) {
       header
-      if session.mode == .chart {
+      if session.mode == .phrases {
+        PhrasesView(model: session.phrases)
+      } else if session.mode == .chart {
         ChartView()
           .padding(.top, 12 * scale)
+      } else if session.mode == .progress {
+        ProgressPanel(model: session.progress)
       } else {
         Spacer(minLength: 4 * scale)
         card
@@ -94,9 +98,10 @@ private struct ScaledPopoverContent: View {
   }
 
   private var header: some View {
-    HStack(alignment: .center, spacing: 10 * scale) {
+    HStack(alignment: .center, spacing: 9 * scale) {
       modeTab("learn", .learn)
       modeTab("study", .study)
+      modeTab("phrases", .phrases)
       Button { session.setMode(.dakuten) } label: {
         Text("゛")
           .font(.system(size: 15 * scale, weight: .semibold))
@@ -111,6 +116,13 @@ private struct ScaledPopoverContent: View {
       }
       .buttonStyle(.plain)
       .help("Chart")
+      Button { session.setMode(.progress) } label: {
+        Image(systemName: "calendar")
+          .font(.system(size: 12 * scale, weight: .medium))
+          .foregroundColor(session.headerMode == .progress ? Ink.gold : Ink.mute(scheme))
+      }
+      .buttonStyle(.plain)
+      .help("Progress")
       Spacer()
       scriptToggle
       Button(action: { session.openSettings() }) {
@@ -133,9 +145,10 @@ private struct ScaledPopoverContent: View {
     } label: {
       Text(label)
         .font(Ink.ui(scale))
-        .tracking(1.2 * scale)
+        .tracking(0.9 * scale)
         .textCase(.uppercase)
         .foregroundColor(session.headerMode == mode ? Ink.gold : Ink.mute(scheme))
+        .fixedSize()
     }
     .buttonStyle(.plain)
   }
@@ -492,6 +505,13 @@ struct SettingsView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
+          AccountSection()
+
+          Rectangle()
+            .fill(Ink.hair(scheme))
+            .frame(height: 1 * scale)
+            .padding(.vertical, 12 * scale)
+
           sectionLabel("Font")
           ForEach(GlyphTypeface.available) { face in
             fontRow(face)
@@ -502,6 +522,22 @@ struct SettingsView: View {
             .frame(height: 1 * scale)
             .padding(.vertical, 12 * scale)
 
+          toggleRow("Read phrases aloud", isOn: session.phrases.speakOn) {
+            session.phrases.setSpeak($0)
+          }
+          HStack {
+            Text("Voice")
+              .font(.system(size: 13 * scale))
+              .foregroundColor(Ink.glyph(scheme))
+            Spacer()
+            Picker("", selection: Binding(get: { session.phrases.voice }, set: { session.phrases.setVoice($0) })) {
+              Text("Mix").tag("mix")
+              ForEach(session.phrases.voices, id: \.self) { Text($0).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 130 * scale)
+          }
+          .padding(.vertical, 4 * scale)
           toggleRow("Pop up while Grok thinks", isOn: session.popOnThink) {
             session.setPopOnThink($0)
           }
@@ -640,5 +676,120 @@ struct SettingsView: View {
     .toggleStyle(.switch)
     .controlSize(.small)
     .padding(.vertical, 6 * scale)
+  }
+}
+
+/// Who this Mac syncs as. Signing in here writes the same ~/.kanthropic/sync.json
+/// the CLI uses, so `kanthropic account` and this panel always agree.
+struct AccountSection: View {
+  @Environment(\.panelScale) var scale
+  @Environment(\.colorScheme) var scheme
+  @EnvironmentObject var session: Session
+  @ObservedObject var cloud = Cloud.shared
+  @State private var email = ""
+  @State private var password = ""
+  @State private var working = false
+  @State private var error: String?
+  @State private var confirmSignOut = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8 * scale) {
+      Text("Account")
+        .font(Ink.ui(scale))
+        .tracking(1.2 * scale)
+        .textCase(.uppercase)
+        .foregroundColor(Ink.mute(scheme))
+      if cloud.enabled { signedIn } else { signInForm }
+    }
+    .onAppear { cloud.refresh() }
+  }
+
+  private var status: String {
+    if cloud.syncing { return "syncing…" }
+    if let e = cloud.lastError { return "sync error: \(e)" }
+    guard let at = cloud.lastSync else { return "syncs when you open and close this panel" }
+    let f = RelativeDateTimeFormatter()
+    f.unitsStyle = .short
+    return "synced \(f.localizedString(for: at, relativeTo: Date()))"
+  }
+
+  private var signedIn: some View {
+    VStack(alignment: .leading, spacing: 8 * scale) {
+      Text(cloud.email ?? "synced with a pairing key")
+        .font(.system(size: 13 * scale, weight: .medium))
+        .foregroundColor(Ink.glyph(scheme))
+      Text(status)
+        .font(.system(size: 11 * scale))
+        .foregroundColor(cloud.lastError == nil ? Ink.mute(scheme) : Ink.miss)
+      HStack(spacing: 16 * scale) {
+        link("sync now") { cloud.sync() }
+        link(cloud.email == nil ? "stop syncing" : "sign out") { confirmSignOut = true }
+      }
+      .padding(.top, 2 * scale)
+    }
+    .alert("Sign out on this Mac?", isPresented: $confirmSignOut) {
+      Button("Sign out", role: .destructive) { cloud.signOut() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Progress on this Mac is kept. It just stops syncing.")
+    }
+  }
+
+  private var signInForm: some View {
+    VStack(alignment: .leading, spacing: 8 * scale) {
+      Text("Sign in to sync with your phone. Creating an account brings this Mac's progress with it.")
+        .font(.system(size: 11 * scale))
+        .foregroundColor(Ink.mute(scheme))
+        .fixedSize(horizontal: false, vertical: true)
+      field { TextField("email", text: $email).textContentType(.username) }
+      field { SecureField("password", text: $password).onSubmit { go(signup: false) } }
+      if let error {
+        Text(error)
+          .font(.system(size: 11 * scale))
+          .foregroundColor(Ink.miss)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      HStack(spacing: 16 * scale) {
+        link(working ? "…" : "sign in") { go(signup: false) }
+        link("create account") { go(signup: true) }
+      }
+      .padding(.top, 2 * scale)
+    }
+  }
+
+  private func field<F: View>(@ViewBuilder _ content: () -> F) -> some View {
+    VStack(spacing: 4 * scale) {
+      content()
+        .textFieldStyle(.plain)
+        .font(.system(size: 13 * scale))
+        .foregroundColor(Ink.glyph(scheme))
+        .disableAutocorrection(true)
+      Rectangle().fill(Ink.gold.opacity(0.5)).frame(height: 1 * scale)
+    }
+  }
+
+  private func link(_ title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(title)
+        .font(Ink.ui(scale))
+        .tracking(1.0 * scale)
+        .textCase(.uppercase)
+        .foregroundColor(Ink.gold)
+    }
+    .buttonStyle(.plain)
+    .disabled(working)
+  }
+
+  private func go(signup: Bool) {
+    guard !working else { return }
+    let e = email.trimmingCharacters(in: .whitespaces)
+    guard !e.isEmpty, !password.isEmpty else { error = "enter your email and password"; return }
+    working = true
+    error = nil
+    cloud.authenticate(signup: signup, email: e, password: password) { err in
+      working = false
+      error = err
+      if err == nil { password = "" }
+    }
   }
 }

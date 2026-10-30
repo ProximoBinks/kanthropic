@@ -8,3 +8,8 @@ macos/Resources/engine.js
 kickbacks.ai-main/
 launch-video/
 kanthropic-vscode/
+
+.env.local
+
+# PWA build output
+web/dist/
