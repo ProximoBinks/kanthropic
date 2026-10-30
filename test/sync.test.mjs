@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { emptyStore } from "../src/core/store.mjs";
 import { gradeCard } from "../src/core/scheduler.mjs";
-import { diff, emptyBase, finish, flatten, prepare, resolve } from "../src/core/sync.mjs";
+import { diff, emptyBase, finish, flatten, prepare, resolve, unflatten } from "../src/core/sync.mjs";
 
 /** In-memory twin of convex/sync.ts so the round trip runs without a deployment. */
 function memoryServer() {
@@ -144,5 +144,14 @@ describe("cloud sync", () => {
     syncDevice(mac, fresh);
     syncDevice(mac, fresh);
     expect(fresh.rows.has("card:あ")).toBe(true);
+  });
+
+  it("keeps keys from a newer app version instead of deleting them", () => {
+    const base = { rev: 5, flat: { "card:あ": { due: 1, last_review: 1 }, "future:thing": { x: 1 } } };
+    // This device's store came from that base: it doesn't know future:thing.
+    const local = unflatten(base.flat, {});
+    expect(local.syncExtra).toEqual({ "future:thing": { x: 1 } });
+    const { changes } = prepare(base, local);
+    expect(changes.find((c) => c.k === "future:thing")).toBeUndefined();
   });
 });

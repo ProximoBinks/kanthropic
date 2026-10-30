@@ -86,6 +86,7 @@ export function load() {
       dakutenStreaks: data.dakutenStreaks && typeof data.dakutenStreaks === "object" ? data.dakutenStreaks : {},
       activity: data.activity && typeof data.activity === "object" ? data.activity : {},
       profile: data.profile && typeof data.profile === "object" ? data.profile : {},
+      syncExtra: data.syncExtra && typeof data.syncExtra === "object" ? data.syncExtra : {},
     };
   } catch {
     if (raw.trim()) {

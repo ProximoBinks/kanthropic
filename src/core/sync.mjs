@@ -14,6 +14,9 @@
  *   profile           { avatar }: a small JPEG data URL for the progress ring
  *
  * A missing key is the same as "absent", so deletions sync as `null`.
+ * Keys this version doesn't know (added by a newer app) are kept as-is in
+ * store.syncExtra and sent back unchanged, so an out-of-date device can
+ * never delete data it doesn't understand.
  * Device-local things (config, ambient, learnedMigrated) never leave the machine.
  *
  * Protocol (see convex/sync.ts): the client pushes the keys that changed since
@@ -62,7 +65,17 @@ export function flatten(store) {
   const dak = store?.dakutenStreaks;
   if (dak && typeof dak === "object" && Object.keys(dak).length) out.dakuten = clean(dak);
   if (typeof store?.profile?.avatar === "string" && store.profile.avatar) out.profile = { avatar: store.profile.avatar };
+  for (const [k, v] of Object.entries(store?.syncExtra || {})) {
+    if (!(k in out) && v != null && !isKnown(k)) out[k] = clean(v);
+  }
   return out;
+}
+
+/** Keys this version of flatten/unflatten handles itself. */
+const KNOWN_PREFIXES = ["card:", "learned:", "progress:", "activity:"];
+const KNOWN_KEYS = new Set(["drill", "dakuten", "profile"]);
+function isKnown(k) {
+  return KNOWN_KEYS.has(k) || KNOWN_PREFIXES.some((p) => k.startsWith(p));
 }
 
 /**
@@ -78,9 +91,12 @@ export function unflatten(flat, local) {
   const drillProgress = {};
   /** @type {Record<string, Record<string, any>>} */
   const activity = {};
+  /** @type {Record<string, any>} */
+  const syncExtra = {};
   for (const [k, v] of Object.entries(flat)) {
     if (v == null) continue;
-    if (k.startsWith("activity:")) {
+    if (!isKnown(k)) syncExtra[k] = v;
+    else if (k.startsWith("activity:")) {
       const [, date, dev] = k.split(":");
       (activity[date] ??= {})[dev] = v;
     }
@@ -100,6 +116,7 @@ export function unflatten(flat, local) {
     activeDrill: drill?.activeDrill || null,
     dakutenStreaks: flat.dakuten || {},
     profile: flat.profile || {},
+    syncExtra,
   };
 }
 
