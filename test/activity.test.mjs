@@ -40,6 +40,19 @@ describe("practice log", () => {
     expect(JSON.stringify(flatten(s))).not.toContain('"deviceId"');
   });
 
+  it("works without Web Crypto (the macOS app's JavaScriptCore has none)", () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    try {
+      const s = { config: {}, activity: {} };
+      logAnswer(s, { kind: "kana", correct: true, now: at(2026, 11, 1) });
+      expect(s.config.deviceId).toMatch(/^[0-9a-f]{12}$/);
+      expect(dayTotals(s, "2026-11-01").answers).toBe(1);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", real);
+    }
+  });
+
   it("keeps the fuller copy of a device's day on a sync conflict", () => {
     const a = { ms: 1000, answers: 3 }, b = { ms: 2000, answers: 5 };
     expect(resolve("activity:2026-10-30:x", a, b)).toBe(b);

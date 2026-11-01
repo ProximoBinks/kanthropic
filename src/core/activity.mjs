@@ -26,10 +26,15 @@ export const GOAL_MIN = 15;
 
 const DAY_MS = 86_400_000;
 
-/** A fresh device id (stored per device, never synced). */
+/**
+ * A fresh device id (stored per device, never synced). Web Crypto when it's
+ * there; the macOS app runs this in JavaScriptCore, which has no `crypto`,
+ * so fall back to Math.random — it only has to tell your own devices apart.
+ */
 export function newDeviceId() {
   const bytes = new Uint8Array(6);
-  globalThis.crypto.getRandomValues(bytes);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 

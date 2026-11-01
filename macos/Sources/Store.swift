@@ -87,11 +87,14 @@ enum Store {
   /// Practice log (src/core/activity.mjs): one answer, inside an update.
   @MainActor
   static func logAnswer(_ s: inout [String: Any], kind: String, correct: Bool, mode: String = "", isNew: Bool = false) {
-    if let r = Engine.dict(Engine.shared.invoke("logAnswer", [
+    let r = Engine.dict(Engine.shared.invoke("logAnswer", [
       "store": s, "kind": kind, "correct": correct, "mode": mode, "isNew": isNew,
       "now": Date().timeIntervalSince1970 * 1000,
-    ])), let next = r["store"] as? [String: Any] {
+    ]))
+    if let next = r?["store"] as? [String: Any] {
       s = next
+    } else {
+      NSLog("kanthropic: logAnswer failed: %@", String(describing: r?["error"] ?? "no result"))
     }
   }
 
